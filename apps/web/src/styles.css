@@ -693,6 +693,51 @@ a {
 }
 
 /* ---------- reasoning, tools, notes ---------- */
+.approval {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  background: var(--tint);
+}
+.tool + .approval,
+.approval + .tool,
+.approval + .approval {
+  border-top: 1px solid var(--border);
+}
+.approval-q {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.approval-q svg {
+  color: var(--accent);
+}
+.approval-q b {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+}
+.approval pre {
+  margin: 0;
+  max-height: 200px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--panel);
+  font: 12px/1.55 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.approval-actions .spacer {
+  flex: 1;
+}
+
 .thought summary {
   list-style: none;
   display: inline-flex;

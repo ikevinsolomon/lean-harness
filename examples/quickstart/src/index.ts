@@ -8,6 +8,7 @@ import {
   FileStore,
   gemini,
   knowledgePlugin,
+  mcpPlugin,
   memoryPlugin,
   mock,
   ollama,
@@ -45,6 +46,22 @@ const defaultModel =
   env.DEFAULT_MODEL ||
   (env.ANTHROPIC_API_KEY ? 'anthropic/claude-opus-5-5' : env.DEEPSEEK_API_KEY ? 'deepseek/deepseek-chat' : 'mock/echo');
 
+// MCP servers from mcp.json, in the same format Claude Desktop uses. Relative paths
+// in "args" and "cwd" resolve from this example's folder.
+type McpConfig = { mcpServers?: Record<string, { command?: string; args?: string[]; env?: Record<string, string>; cwd?: string; url?: string; headers?: Record<string, string> }> };
+const mcpConfig: McpConfig = JSON.parse(await readFile(here('../mcp.json'), 'utf8').catch(() => '{}'));
+const mcp = await mcpPlugin({
+  servers: Object.fromEntries(
+    Object.entries(mcpConfig.mcpServers ?? {}).map(([name, s]) => [
+      name,
+      s.url
+        ? { url: s.url, headers: s.headers }
+        : { command: s.command === 'node' ? process.execPath : s.command!, args: s.args, env: s.env, cwd: s.cwd ?? here('..') },
+    ]),
+  ),
+});
+for (const s of mcp.servers) console.log(`MCP server "${s.name}": ${s.tools.join(', ')}`);
+
 const harness = createHarness({
   providers,
   plugins: [
@@ -53,6 +70,7 @@ const harness = createHarness({
     memoryPlugin({ backend: new FileMemory(here('../.data/memory.json')) }),
     // Documents the model can search: every .md file in ./knowledge.
     knowledgePlugin({ dir: here('../knowledge'), description: 'Lean Harness: models, tools, plugins, memory, context and the chat UI' }),
+    mcp,
   ],
   defaultModel,
   instructions: 'You are Lean Harness, a helpful assistant. Answer clearly and briefly.',

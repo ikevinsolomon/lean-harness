@@ -37,3 +37,4 @@ export const Wrench = (p: P) => <Svg {...p}><path d="M14.7 6.3a4 4 0 00-5.4 5.4L
 export const Clock = (p: P) => <Svg {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></Svg>;
 export const Bang = ({ size = 11 }: P) => <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v6M12 17v.5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" /></svg>;
 export const Tick = ({ size = 11 }: P) => <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+export const Shield = (p: P) => <Svg {...p}><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z" /><path d="M9.5 12l2 2 3.5-4" /></Svg>;

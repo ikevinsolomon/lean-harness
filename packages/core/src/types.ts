@@ -143,6 +143,8 @@ export type HarnessEvent =
   | { type: 'text_delta'; text: string }
   | { type: 'reasoning_delta'; text: string }
   | { type: 'tool_call'; id: string; name: string; input: unknown }
+  /** The turn is paused until someone allows or declines this tool call (see `Harness.decide`). */
+  | { type: 'approval_request'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; id: string; name: string; output: string; isError: boolean }
   | { type: 'message'; message: Message }
   | { type: 'turn_end'; stopReason: StopReason; usage: Usage; steps: number }

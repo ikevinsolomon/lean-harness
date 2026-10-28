@@ -28,6 +28,8 @@ export interface HarnessOptions {
   store?: SessionStore;
   /** Model calls allowed in one turn before it stops (default 12). */
   maxSteps?: number;
+  /** How long a tool call waits for someone to allow it before it counts as declined (default 10 minutes). */
+  approvalTimeoutMs?: number;
 }
 
 export interface RunOptions {
@@ -95,6 +97,9 @@ export class Harness {
   private readonly maxSteps: number;
   private readonly instructions: string;
   private readonly running = new Set<string>();
+  private readonly approvalTimeoutMs: number;
+  /** Tool calls waiting for a decision, by `sessionId:callId`. */
+  private readonly pending = new Map<string, (approved: boolean) => void>();
 
   constructor(options: HarnessOptions) {
     this.plugins = [{ name: 'providers', providers: options.providers ?? [] }, ...(options.plugins ?? [])];
@@ -102,6 +107,7 @@ export class Harness {
     this.store = options.store ?? new MemoryStore();
     this.maxSteps = options.maxSteps ?? 12;
     this.instructions = options.instructions ?? 'You are a helpful assistant.';
+    this.approvalTimeoutMs = options.approvalTimeoutMs ?? 10 * 60_000;
     for (const plugin of this.plugins) {
       for (const provider of plugin.providers ?? []) {
         if (this.providers.has(provider.id)) throw new Error(`Two plugins register provider "${provider.id}"`);
@@ -249,7 +255,21 @@ export class Harness {
         }
 
         for (const call of calls) yield await emit({ type: 'tool_call', id: call.id, name: call.name, input: call.input });
-        const results = await Promise.all(calls.map((call) => this.runTool(call, session, modelId, signal)));
+
+        // Calls that need approval wait for a decision; the others are allowed straight away.
+        const asks = await Promise.all(calls.map((call) => this.needsApproval(call, sessionId, session, signal)));
+        const decisions = calls.map((call, i) => (asks[i] ? this.waitForDecision(sessionId, call.id, signal) : Promise.resolve(true)));
+        for (const [i, call] of calls.entries()) {
+          if (asks[i]) yield await emit({ type: 'approval_request', id: call.id, name: call.name, input: call.input });
+        }
+        const allowed = await Promise.all(decisions);
+        const results = await Promise.all(
+          calls.map((call, i) =>
+            allowed[i]
+              ? this.runTool(call, session, modelId, signal)
+              : { type: 'tool_result' as const, toolCallId: call.id, name: call.name, output: 'The user declined this action.', isError: true },
+          ),
+        );
         for (const r of results) {
           yield await emit({ type: 'tool_result', id: r.toolCallId, name: r.name, output: r.output, isError: !!r.isError });
         }
@@ -266,6 +286,24 @@ export class Harness {
       this.running.delete(sessionId);
     }
     yield await emit({ type: 'turn_end', stopReason, usage, steps });
+  }
+
+  /**
+   * Allow or decline a tool call that is waiting for approval. With `always`, the tool is
+   * allowed for the rest of this session without asking. Returns false if nothing was waiting.
+   */
+  async decide(sessionId: string, callId: string, approved: boolean, always = false): Promise<boolean> {
+    const resolve = this.pending.get(`${sessionId}:${callId}`);
+    if (!resolve) return false;
+    if (approved && always) {
+      const session = await this.getSession(sessionId);
+      const call = session.messages.flatMap((m) => m.parts).find((p) => p.type === 'tool_call' && p.id === callId);
+      const allowedTools = new Set((session.metadata.allowedTools as string[] | undefined) ?? []);
+      if (call?.type === 'tool_call') allowedTools.add(call.name);
+      await this.store.update(sessionId, { metadata: { ...session.metadata, allowedTools: [...allowedTools] } });
+    }
+    resolve(approved);
+    return true;
   }
 
   /** Run a turn to completion and return the new messages (for non-streaming callers). */
@@ -303,6 +341,34 @@ export class Harness {
       if (text?.trim()) sections.push(text.trim());
     }
     return sections.join('\n\n');
+  }
+
+  private async needsApproval(call: ToolCallPart, sessionId: string, session: Session, signal: AbortSignal): Promise<boolean> {
+    const tool = this.tools.get(call.name);
+    if (!tool?.needsApproval) return false;
+    const parsed = tool.input.safeParse(call.input);
+    if (!parsed.success) return false; // runTool reports the bad input instead of asking about it
+    const latest = (await this.store.get(sessionId)) ?? session;
+    if (((latest.metadata.allowedTools as string[] | undefined) ?? []).includes(call.name)) return false;
+    return typeof tool.needsApproval === 'function' ? !!(await tool.needsApproval(parsed.data, { session, signal })) : true;
+  }
+
+  /** Resolves true when allowed; false when declined, timed out, or the turn was stopped. */
+  private waitForDecision(sessionId: string, callId: string, signal: AbortSignal): Promise<boolean> {
+    const key = `${sessionId}:${callId}`;
+    return new Promise((resolve) => {
+      const finish = (approved: boolean) => {
+        clearTimeout(timer);
+        signal.removeEventListener('abort', onAbort);
+        this.pending.delete(key);
+        resolve(approved);
+      };
+      const onAbort = () => finish(false);
+      const timer = setTimeout(() => finish(false), this.approvalTimeoutMs);
+      signal.addEventListener('abort', onAbort, { once: true });
+      this.pending.set(key, finish);
+      if (signal.aborted) finish(false);
+    });
   }
 
   private async runTool(call: ToolCallPart, session: Session, model: string, signal: AbortSignal): Promise<ToolResultPart> {

@@ -1,7 +1,7 @@
 import { memo, useState, type MouseEvent } from 'react';
 import { pretty, renderMarkdown, summarize, textOf, type Message } from '../lib';
 import { useApp } from '../store';
-import { Bang, Brain, Check, Chevron, Copy, Edit, Retry, Right, Tick } from './Icons';
+import { Bang, Brain, Check, Chevron, Copy, Edit, Retry, Right, Shield, Tick } from './Icons';
 
 export type Turn = { kind: 'user'; message: Message } | { kind: 'assistant'; messages: Message[] };
 export type Results = Map<string, { output: string; isError?: boolean }>;
@@ -71,11 +71,47 @@ function Thought({ text, active }: { text: string; active?: boolean }) {
   );
 }
 
-function ToolCalls({ calls, results }: { calls: { id: string; name: string; input: unknown }[]; results: Results }) {
+export interface Approvals {
+  /** Tool calls waiting for the user's decision. */
+  asking: Set<string>;
+  decide(callId: string, approved: boolean, always?: boolean): void;
+}
+
+/** MCP tools are named server__tool; show them as "server › tool". */
+const displayName = (name: string) => name.replace('__', ' › ');
+
+function ApprovalPrompt({ call, approvals }: { call: { id: string; name: string; input: unknown }; approvals: Approvals }) {
+  return (
+    <div className="approval" role="group" aria-label={`Approve ${displayName(call.name)}`}>
+      <div className="approval-q">
+        <Shield size={16} />
+        <span>
+          Allow <b>{displayName(call.name)}</b> to run?
+        </span>
+      </div>
+      <pre>{pretty(call.input)}</pre>
+      <div className="approval-actions">
+        <button className="btn" onClick={() => approvals.decide(call.id, false)}>
+          Deny
+        </button>
+        <span className="spacer" />
+        <button className="btn" onClick={() => approvals.decide(call.id, true, true)}>
+          Always allow in this chat
+        </button>
+        <button className="btn primary" autoFocus onClick={() => approvals.decide(call.id, true)}>
+          Allow
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ToolCalls({ calls, results, approvals }: { calls: { id: string; name: string; input: unknown }[]; results: Results; approvals?: Approvals }) {
   return (
     <div className="tools">
       {calls.map((c) => {
         const r = results.get(c.id);
+        if (!r && approvals?.asking.has(c.id)) return <ApprovalPrompt key={c.id} call={c} approvals={approvals} />;
         return (
           <details key={c.id} className="tool">
             <summary>
@@ -90,7 +126,7 @@ function ToolCalls({ calls, results }: { calls: { id: string; name: string; inpu
                   <Tick />
                 </span>
               )}
-              <span className="tool-name">{c.name}</span>
+              <span className="tool-name">{displayName(c.name)}</span>
               <span className="tool-sum">{summarize(c.input)}</span>
               <span className="chev">
                 <Chevron size={15} />
@@ -180,9 +216,10 @@ interface AssistantProps {
   busy: boolean;
   modelLabel(id?: string): string;
   onRetry(): void;
+  approvals?: Approvals;
 }
 
-export function AssistantTurn({ messages, results, live, streaming, last, busy, modelLabel, onRetry }: AssistantProps) {
+export function AssistantTurn({ messages, results, live, streaming, last, busy, modelLabel, onRetry, approvals }: AssistantProps) {
   const { copied, copy } = useCopy();
   const assistant = messages.filter((m) => m.role === 'assistant');
   const fullText = [...assistant.map((m) => textOf(m.parts)), live?.text ?? ''].filter(Boolean).join('\n\n');
@@ -202,7 +239,7 @@ export function AssistantTurn({ messages, results, live, streaming, last, busy, 
           <div key={m.id} style={{ display: 'contents' }}>
             {reasoning && <Thought text={reasoning} />}
             {text && <Markdown text={text} />}
-            {calls.length > 0 && <ToolCalls calls={calls} results={results} />}
+            {calls.length > 0 && <ToolCalls calls={calls} results={results} approvals={approvals} />}
           </div>
         );
       })}

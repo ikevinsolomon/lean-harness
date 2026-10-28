@@ -157,6 +157,7 @@ export class LeanChat extends LitElement {
     busy: { state: true },
     error: { state: true },
     draft: { state: true },
+    asking: { state: true },
   };
 
   // Reactive fields are declared, not initialized, so class-field semantics in any
@@ -190,6 +191,8 @@ export class LeanChat extends LitElement {
   declare private busy: boolean;
   declare private error: string;
   declare private draft: string;
+  /** Tool calls waiting for the user to allow or decline them. */
+  declare private asking: Set<string>;
 
   private sessionId?: string;
   private abort?: AbortController;
@@ -224,6 +227,7 @@ export class LeanChat extends LitElement {
     this.busy = false;
     this.error = '';
     this.draft = '';
+    this.asking = new Set();
   }
 
   private get storageKey() {
@@ -407,6 +411,9 @@ export class LeanChat extends LitElement {
         this.items = tail?.kind === 'tools' ? [...items.slice(0, -1), { kind: 'tools', calls: [...tail.calls, call] }] : [...items, { kind: 'tools', calls: [call] }];
         break;
       }
+      case 'approval_request':
+        this.asking = new Set(this.asking).add(event.id);
+        break;
       case 'tool_result':
         this.items = this.items.map((i) =>
           i.kind === 'tools'
@@ -664,7 +671,25 @@ export class LeanChat extends LitElement {
     `;
   }
 
+  private decide(callId: string, approved: boolean, always = false) {
+    const next = new Set(this.asking);
+    next.delete(callId);
+    this.asking = next;
+    if (this.sessionId) this.client.decide(this.sessionId, callId, approved, always).catch((e) => this.fail(e));
+  }
+
   private renderToolCall(call: ToolCall) {
+    if (call.output === undefined && this.asking.has(call.id)) {
+      return html`<div class="approval" role="group" aria-label="Approve ${call.name}">
+        <div class="approval-q">Allow <b>${call.name.replace('__', ' › ')}</b> to run?</div>
+        <pre>${pretty(call.input)}</pre>
+        <div class="approval-actions">
+          <button class="chip" @click=${() => this.decide(call.id, false)}>Deny</button>
+          <button class="chip" @click=${() => this.decide(call.id, true, true)}>Always allow</button>
+          <button class="chip primary" @click=${() => this.decide(call.id, true)}>Allow</button>
+        </div>
+      </div>`;
+    }
     const done = call.output !== undefined;
     const status = !done
       ? html`<span class="status running" aria-label="Running"></span>`

@@ -108,6 +108,40 @@ document.querySelector('lean-chat').context = { Order: 'A-4411, shipped 2 Nov', 
 
 Theme it with CSS variables: `lean-chat { --lc-accent: #0f766e; --lc-radius: 14px; --lc-font: Inter, sans-serif; }` (also `--lc-bg`, `--lc-panel`, `--lc-ink`, `--lc-muted`, `--lc-border`, `--lc-bubble`). It looks best with Inter and JetBrains Mono loaded on the page and falls back to system fonts. It emits `lean-chat-event` for every streamed event and `lean-chat-error` on errors. `HarnessClient` is exported from the same file if you want the API client without the UI.
 
+## MCP servers
+
+Any [MCP](https://modelcontextprotocol.io) server's tools become harness tools, local (a command) or remote (a URL):
+
+```ts
+import { mcpPlugin } from '@lean-harness/core';
+
+const mcp = await mcpPlugin({
+  servers: {
+    notes: { command: 'node', args: ['notes-server.mjs'] },
+    docs: { url: 'https://example.com/mcp', headers: { Authorization: `Bearer ${process.env.DOCS_TOKEN}` } },
+  },
+});
+const harness = createHarness({ providers, plugins: [mcp], defaultModel });
+// on shutdown: await mcp.close();
+```
+
+Tools are named `server__tool` (shown as "server › tool"). A server that can't be reached is skipped with a warning; the others still load. Local servers get a minimal environment plus the `env` you give them, not every secret in yours. The quickstart reads servers from `examples/quickstart/mcp.json`, in the same format as Claude Desktop, and includes a small example server (`mcp/notes-server.mjs`).
+
+## Tool approvals
+
+A tool can ask before it runs. The turn pauses, emits `approval_request`, and continues when someone decides; the model is told if the user declined.
+
+```ts
+defineTool({
+  name: 'transfer',
+  input: z.object({ amount: z.number() }),
+  needsApproval: ({ amount }) => amount > 100, // or true
+  run: ...
+});
+```
+
+MCP tools ask by default unless the server marks them read-only (`approval: 'unless-read-only'`; also `'always'`, `'never'`, or a function). The web app and the widget show **Allow**, **Always allow in this chat** and **Deny**. Over the API: `POST /v1/sessions/:id/approvals/:callId` with `{ "approved": true, "always": false }`, or `harness.decide(...)` in code. A call nobody answers is declined after `approvalTimeoutMs` (10 minutes by default).
+
 ## Memory and context
 
 | | What | How |
@@ -153,6 +187,7 @@ All routes are under `/v1`. Set `apiKey` (or an `authorize` function) in `create
 | `GET` | `/sessions/:id` | Session with all messages |
 | `PATCH` | `/sessions/:id` | `{ model?, title?, metadata? }`; switch the model here |
 | `DELETE` | `/sessions/:id` | |
+| `POST` | `/sessions/:id/approvals/:callId` | `{ approved, always? }`: allow or decline a tool call that is waiting |
 | `POST` | `/sessions/:id/messages` | `{ content, model?, context?, replaceFrom?, stream? }` → event stream, or JSON when `stream: false`. `replaceFrom` is a user message id: it and everything after it are replaced (retry, edit) |
 
 A turn streams as Server-Sent Events, one per event:
@@ -162,6 +197,7 @@ A turn streams as Server-Sent Events, one per event:
 | `turn_start` | `{ sessionId, model }` |
 | `text_delta` / `reasoning_delta` | `{ text }` |
 | `tool_call` | `{ id, name, input }` |
+| `approval_request` | `{ id, name, input }`: the turn waits for a decision |
 | `tool_result` | `{ id, name, output, isError }` |
 | `message` | `{ message }`: each stored message (user, assistant, tool results) |
 | `error` | `{ message }` |

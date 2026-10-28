@@ -72,6 +72,14 @@ describe('HTTP API', () => {
     expect(tooBig.status).toBe(400);
   });
 
+  it('answers a 404 when no tool call is waiting for the decision', async () => {
+    const a = app();
+    const session = await (await a.request('/v1/sessions', json({}))).json();
+    const res = await a.request(`/v1/sessions/${session.id}/approvals/nothing`, json({ approved: true }));
+    expect(res.status).toBe(404);
+    expect((await a.request(`/v1/sessions/${session.id}/approvals/nothing`, json({ approved: 'yes' }))).status).toBe(400);
+  });
+
   it('maps errors to HTTP status codes', async () => {
     const a = app();
     expect((await a.request('/v1/sessions/nope')).status).toBe(404);

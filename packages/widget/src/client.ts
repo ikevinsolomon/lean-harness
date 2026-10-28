@@ -38,6 +38,7 @@ export interface SessionSummary {
 
 export type ChatEvent =
   | { type: 'turn_start'; sessionId: string; model: string }
+  | { type: 'approval_request'; id: string; name: string; input: unknown }
   | { type: 'text_delta'; text: string }
   | { type: 'reasoning_delta'; text: string }
   | { type: 'tool_call'; id: string; name: string; input: unknown }
@@ -101,6 +102,14 @@ export class HarnessClient {
 
   getSession(id: string) {
     return this.request<Session>(`/sessions/${encodeURIComponent(id)}`);
+  }
+
+  /** Allow or decline a tool call that is waiting for approval. */
+  decide(sessionId: string, callId: string, approved: boolean, always = false) {
+    return this.request<void>(`/sessions/${encodeURIComponent(sessionId)}/approvals/${encodeURIComponent(callId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ approved, always }),
+    });
   }
 
   rename(id: string, title: string) {

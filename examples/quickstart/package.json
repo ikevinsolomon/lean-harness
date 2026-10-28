@@ -10,6 +10,8 @@
     "@hono/node-server": "^2.1.5",
     "@lean-harness/core": "workspace:*",
     "@lean-harness/server": "workspace:*",
-    "@lean-harness/widget": "workspace:*"
+    "@lean-harness/widget": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
   }
 }

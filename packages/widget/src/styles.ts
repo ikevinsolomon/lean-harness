@@ -507,6 +507,38 @@ export const styles = css`
     padding: 8px 10px;
   }
 
+  .approval {
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+    background: var(--lc-tint);
+    font-size: 13.5px;
+  }
+  .approval b {
+    font-family: var(--lc-mono);
+    font-weight: 500;
+  }
+  .approval pre {
+    margin: 0;
+    max-height: 160px;
+    overflow: auto;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--lc-panel);
+    font: 12px var(--lc-mono);
+    white-space: pre-wrap;
+  }
+  .approval-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+  .approval .chip.primary {
+    background: var(--lc-ink);
+    color: var(--lc-bg);
+    border-color: transparent;
+  }
   .note {
     align-self: flex-start;
     display: inline-flex;

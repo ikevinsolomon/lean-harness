@@ -39,6 +39,12 @@ const SendMessage = z.object({
     .optional(),
 });
 
+const Decision = z.object({
+  approved: z.boolean(),
+  /** Allow this tool for the rest of the session without asking again. */
+  always: z.boolean().optional(),
+});
+
 const STATUS = { not_found: 404, busy: 409, bad_request: 400 } as const;
 
 function fail(c: Context, error: unknown) {
@@ -96,6 +102,14 @@ export function createServer(harness: Harness, options: ServerOptions = {}) {
 
   api.delete('/sessions/:id', async (c) => {
     if (!(await harness.store.delete(c.req.param('id')))) throw new HarnessError('not_found', 'Session not found');
+    return c.body(null, 204);
+  });
+
+  // Allow or decline a tool call that paused the turn (an `approval_request` event).
+  api.post('/sessions/:id/approvals/:callId', async (c) => {
+    const body = Decision.parse(await c.req.json());
+    const found = await harness.decide(c.req.param('id'), c.req.param('callId'), body.approved, body.always);
+    if (!found) throw new HarnessError('not_found', 'No tool call is waiting for that decision');
     return c.body(null, 204);
   });
 

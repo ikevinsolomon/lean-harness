@@ -24,6 +24,7 @@ export function ChatView({ id }: { id?: string }) {
   const [newModel, setNewModel] = useState('');
   const [live, setLive] = useState<Live | null>(null);
   const [liveResults, setLiveResults] = useState<Results>(new Map());
+  const [asking, setAsking] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [atBottom, setAtBottom] = useState(true);
@@ -105,8 +106,16 @@ export function ChatView({ id }: { id?: string }) {
       case 'reasoning_delta':
         setLive((l) => ({ text: l?.text ?? '', reasoning: (l?.reasoning ?? '') + event.text }));
         break;
+      case 'approval_request':
+        setAsking((a) => new Set(a).add(event.id));
+        break;
       case 'tool_result':
         setLiveResults((r) => new Map(r).set(event.id, { output: event.output, isError: event.isError }));
+        setAsking((a) => {
+          const next = new Set(a);
+          next.delete(event.id);
+          return next;
+        });
         break;
       case 'turn_end':
         if (event.stopReason === 'max_steps') setError('Stopped after too many steps.');
@@ -142,6 +151,7 @@ export function ChatView({ id }: { id?: string }) {
       setBusy(false);
       setLive(null);
       setLiveResults(new Map());
+      setAsking(new Set());
       // The server holds the truth: reload so stopped or failed turns show exactly what was saved.
       const sid = current?.id;
       if (sid && viewing.current === sid) {
@@ -152,6 +162,19 @@ export function ChatView({ id }: { id?: string }) {
   };
 
   const stop = () => abort.current?.abort();
+
+  const approvals = {
+    asking,
+    decide(callId: string, approved: boolean, always = false) {
+      if (!session) return;
+      setAsking((a) => {
+        const next = new Set(a);
+        next.delete(callId);
+        return next;
+      });
+      api.decide(session.id, callId, approved, always).catch(() => setError('That approval expired. Ask again to retry.'));
+    },
+  };
 
   const changeModel = async (next: string) => {
     if (!session) return setNewModel(next);
@@ -262,6 +285,7 @@ export function ChatView({ id }: { id?: string }) {
                 busy={busy}
                 modelLabel={modelLabel}
                 onRetry={retry}
+                approvals={approvals}
               />
             ),
           )}
