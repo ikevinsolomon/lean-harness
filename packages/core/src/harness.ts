@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import type { HookContext, Plugin } from './plugin.js';
 import { cutPoint, estimateTokens, SUMMARY_PROMPT, summaryMessage, transcript, type ContextOptions, type Summary } from './context.js';
 import { MemoryStore, type SessionPatch, type SessionStore } from './store.js';
@@ -414,6 +415,63 @@ export class Harness {
   /** Whether a turn is running for this session right now. */
   isRunning(sessionId: string) {
     return this.running.has(sessionId);
+  }
+
+  /**
+   * Structured output: have a model answer with data matching `schema`, outside any chat.
+   * `await harness.extract(z.object({ city: z.string() }), 'I live in Pune')`. The model
+   * answers through a tool whose input is the schema; invalid answers are retried twice.
+   */
+  async extract<S extends z.ZodType>(
+    schema: S,
+    input: string,
+    options: { model?: string; instructions?: string; signal?: AbortSignal } = {},
+  ): Promise<z.infer<S>> {
+    const modelId = options.model ?? this.defaultModel;
+    const provider = this.requireProvider(modelId);
+    const { model } = parseModelId(modelId);
+    const { $schema: _, ...json } = z.toJSONSchema(schema, { io: 'input' }) as Record<string, unknown>;
+    // Tool inputs must be objects; wrap anything else in { value }.
+    const wrapped = json.type !== 'object';
+    const inputSchema = wrapped ? { type: 'object', properties: { value: json }, required: ['value'] } : json;
+    const system = `${options.instructions ?? 'Extract the requested information from the input.'} Answer only by calling the \`respond\` tool, once.`;
+    const messages: Message[] = [{ id: 'input', role: 'user', parts: [{ type: 'text', text: input }], createdAt: now() }];
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      let done: Extract<ProviderEvent, { type: 'done' }> | undefined;
+      for await (const event of provider.stream({
+        model,
+        system,
+        messages,
+        tools: [{ name: 'respond', description: 'Give your answer.', inputSchema }],
+        signal: options.signal,
+      })) {
+        if (event.type === 'done') done = event;
+      }
+      if (!done) throw new Error(`Provider "${provider.id}" ended without a result`);
+      messages.push({
+        id: `answer-${attempt}`,
+        role: 'assistant',
+        parts: done.parts,
+        createdAt: now(),
+        native: done.native === undefined ? undefined : { provider: provider.id, data: done.native },
+      });
+      const call = done.parts.find((p): p is ToolCallPart => p.type === 'tool_call' && p.name === 'respond');
+      if (!call) {
+        messages.push({ id: `nudge-${attempt}`, role: 'user', parts: [{ type: 'text', text: 'Answer by calling the respond tool.' }], createdAt: now() });
+        continue;
+      }
+      const value = wrapped ? (call.input as { value?: unknown })?.value : call.input;
+      const parsed = schema.safeParse(value);
+      if (parsed.success) return parsed.data;
+      messages.push({
+        id: `invalid-${attempt}`,
+        role: 'tool',
+        parts: [{ type: 'tool_result', toolCallId: call.id, name: 'respond', output: `That answer does not match the schema: ${parsed.error.message}`, isError: true }],
+        createdAt: now(),
+      });
+    }
+    throw new Error('The model did not produce a valid answer after 3 tries');
   }
 
   /** Run a turn to completion and return the new messages (for non-streaming callers). */

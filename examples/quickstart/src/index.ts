@@ -15,6 +15,7 @@ import {
   openrouter,
   PostgresStore,
   SqliteStore,
+  webFetchPlugin,
   type Provider,
   type SessionStore,
 } from '@lean-harness/core';
@@ -83,6 +84,8 @@ const harness = createHarness({
     memoryPlugin({ backend: memory }),
     // Documents the model can search: every .md file in ./knowledge.
     knowledgePlugin({ dir: here('../knowledge'), description: 'Lean Harness: models, tools, plugins, memory, context and the chat UI' }),
+    // Reading public web pages (private and local addresses are refused).
+    webFetchPlugin(),
     mcp,
   ],
   defaultModel,
