@@ -31,7 +31,17 @@ export interface ToolResultPart {
   isError?: boolean;
 }
 
-export type Part = TextPart | ReasoningPart | ToolCallPart | ToolResultPart;
+/**
+ * Context the app attached to a user message: the page the user is on, the
+ * record they are looking at, their role. The model sees it; chat UIs show it as a chip.
+ */
+export interface ContextPart {
+  type: 'context';
+  label: string;
+  text: string;
+}
+
+export type Part = TextPart | ContextPart | ReasoningPart | ToolCallPart | ToolResultPart;
 
 export interface Usage {
   inputTokens?: number;

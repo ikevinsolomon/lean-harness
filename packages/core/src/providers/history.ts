@@ -1,4 +1,12 @@
-import type { Message, ToolCallPart, ToolResultPart } from '../types.js';
+import type { Message, Part, ToolCallPart, ToolResultPart } from '../types.js';
+
+/** A user message as text: attached context first, each in a labelled tag, then what the user wrote. */
+export function userText(parts: Part[]): string {
+  const label = (l: string) => l.replace(/["\n<>]/g, ' ');
+  const context = parts.flatMap((p) => (p.type === 'context' ? [`<context label="${label(p.label)}">\n${p.text}\n</context>`] : []));
+  const text = parts.flatMap((p) => (p.type === 'text' ? [p.text] : []));
+  return [...context, text.join('\n')].join('\n\n');
+}
 
 /**
  * Every provider requires each tool call to be answered by a result. A turn that

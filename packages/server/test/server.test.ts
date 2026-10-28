@@ -62,6 +62,16 @@ describe('HTTP API', () => {
     expect(result.messages.at(-1).model).toBe('other/echo');
   });
 
+  it('attaches context to a message', async () => {
+    const a = app();
+    const session = await (await a.request('/v1/sessions', json({}))).json();
+    await a.request(`/v1/sessions/${session.id}/messages`, json({ content: 'hi', stream: false, context: { Page: 'Pricing' } }));
+    const stored = await (await a.request(`/v1/sessions/${session.id}`)).json();
+    expect(stored.messages[0].parts[0]).toEqual({ type: 'context', label: 'Page', text: 'Pricing' });
+    const tooBig = await a.request(`/v1/sessions/${session.id}/messages`, json({ content: 'hi', context: { x: 'y'.repeat(100_001) } }));
+    expect(tooBig.status).toBe(400);
+  });
+
   it('maps errors to HTTP status codes', async () => {
     const a = app();
     expect((await a.request('/v1/sessions/nope')).status).toBe(404);

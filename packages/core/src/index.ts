@@ -19,6 +19,11 @@ export {
 } from './providers/openai-compatible.js';
 export type { OpenAICompatibleOptions } from './providers/openai-compatible.js';
 export { mock } from './providers/mock.js';
+export { FileMemory, InMemoryMemory, keywordSearch, memoryPlugin } from './plugins/memory.js';
+export type { MemoryBackend, MemoryPluginOptions, MemoryRecord } from './plugins/memory.js';
+export { chunkDocument, knowledgePlugin } from './plugins/knowledge.js';
+export type { KnowledgeChunk, KnowledgeOptions } from './plugins/knowledge.js';
+export { historyWindow } from './plugins/history-window.js';
 export type { MockOptions } from './providers/mock.js';
 export { z } from 'zod';
 export type * from './types.js';

@@ -34,6 +34,21 @@ export interface RunOptions {
   /** Use this `provider/model` for this turn only. */
   model?: string;
   signal?: AbortSignal;
+  /**
+   * Context from the app, attached to this message: `{ "Page": "Q3 planning", "Role": "admin" }`.
+   * Each entry becomes a labelled block the model reads before the message (objects as JSON).
+   */
+  context?: Record<string, unknown>;
+}
+
+function contextParts(context: Record<string, unknown> = {}): Part[] {
+  return Object.entries(context)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .map(([label, value]) => ({
+      type: 'context' as const,
+      label,
+      text: typeof value === 'string' ? value : JSON.stringify(value, null, 2),
+    }));
 }
 
 export class HarnessError extends Error {
@@ -172,7 +187,12 @@ export class Harness {
     try {
       yield await emit({ type: 'turn_start', sessionId, model: modelId });
       if (!session.title) session = await this.store.update(sessionId, { title: input.trim().slice(0, 80) });
-      yield await append({ id: randomUUID(), role: 'user', parts: [{ type: 'text', text: input }], createdAt: now() });
+      yield await append({
+        id: randomUUID(),
+        role: 'user',
+        parts: [...contextParts(options.context), { type: 'text', text: input }],
+        createdAt: now(),
+      });
 
       while (steps < this.maxSteps) {
         steps++;

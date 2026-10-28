@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { Message, ModelRequest, Part, Provider, ProviderEvent, StopReason } from '../types.js';
-import { answerOrphanedToolCalls } from './history.js';
+import { answerOrphanedToolCalls, userText } from './history.js';
 
 export interface OpenAICompatibleOptions {
   /** The prefix in `provider/model`. */
@@ -22,7 +22,7 @@ export function toChatMessages(system: string, messages: Message[]): ChatMessage
   for (const message of answerOrphanedToolCalls(messages)) {
     const text = message.parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('\n');
     if (message.role === 'user') {
-      out.push({ role: 'user', content: text });
+      out.push({ role: 'user', content: userText(message.parts) });
     } else if (message.role === 'assistant') {
       const calls = message.parts.flatMap((p) =>
         p.type === 'tool_call'

@@ -30,6 +30,11 @@ const SendMessage = z.object({
   model: z.string().optional(),
   /** Stream Server-Sent Events (default) or return one JSON result. */
   stream: z.boolean().optional(),
+  /** Context for this message, shown to the model as labelled blocks: `{ "Page": "Pricing" }`. */
+  context: z
+    .record(z.string().max(100), z.unknown())
+    .refine((c) => JSON.stringify(c).length <= 100_000, 'Context is larger than 100,000 characters')
+    .optional(),
 });
 
 const STATUS = { not_found: 404, busy: 409, bad_request: 400 } as const;
@@ -97,11 +102,13 @@ export function createServer(harness: Harness, options: ServerOptions = {}) {
     const id = c.req.param('id');
 
     if (body.stream === false) {
-      return c.json(await harness.send(id, body.content, { model: body.model, signal: c.req.raw.signal }));
+      return c.json(
+        await harness.send(id, body.content, { model: body.model, context: body.context, signal: c.req.raw.signal }),
+      );
     }
 
     const abort = new AbortController();
-    const events = harness.run(id, body.content, { model: body.model, signal: abort.signal });
+    const events = harness.run(id, body.content, { model: body.model, context: body.context, signal: abort.signal });
     // Pull the first event before streaming, so "not found" or "busy" become normal HTTP errors.
     const first = await events.next();
     return streamSSE(c, async (stream) => {

@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { BetaMessageStreamParams } from '@anthropic-ai/sdk/resources/beta/messages';
 import type { Message, ModelRequest, Part, Provider, ProviderEvent, StopReason } from '../types.js';
-import { answerOrphanedToolCalls } from './history.js';
+import { answerOrphanedToolCalls, userText } from './history.js';
 
 export interface AnthropicOptions {
   id?: string;
@@ -67,8 +67,7 @@ export function toAnthropicMessages(messages: Message[], providerId = 'anthropic
       );
       push('user', results);
     } else {
-      const text = message.parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('\n');
-      push('user', [{ type: 'text', text }]);
+      push('user', [{ type: 'text', text: userText(message.parts) }]);
     }
   }
   return out;

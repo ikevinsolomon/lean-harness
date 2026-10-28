@@ -4,8 +4,11 @@ import {
   anthropic,
   createHarness,
   deepseek,
+  FileMemory,
   FileStore,
   gemini,
+  knowledgePlugin,
+  memoryPlugin,
   mock,
   ollama,
   openai,
@@ -43,7 +46,14 @@ const defaultModel =
 
 const harness = createHarness({
   providers,
-  plugins: [tasksPlugin(here('../.data/tasks.json')), clockPlugin],
+  plugins: [
+    tasksPlugin(here('../.data/tasks.json')),
+    clockPlugin,
+    // Long-term memory per user (sessions created with metadata.userId), else one shared "default" user.
+    memoryPlugin({ backend: new FileMemory(here('../.data/memory.json')) }),
+    // Documents the model can search: every .md file in ./knowledge.
+    knowledgePlugin({ dir: here('../knowledge'), description: 'how this team plans and prioritises work' }),
+  ],
   defaultModel,
   instructions: 'You are Taskmate, a friendly assistant that keeps the user organised. Be brief.',
   store: new FileStore(here('../.data/sessions')),
