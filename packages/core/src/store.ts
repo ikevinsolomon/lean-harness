@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Message, Session } from './types.js';
@@ -156,7 +157,7 @@ export class FileStore implements SessionStore {
   /** Write to a temporary file, then rename, so a crash never leaves a half-written session. */
   private async write(session: Session) {
     await mkdir(this.dir, { recursive: true });
-    const tmp = `${this.path(session.id)}.${process.pid}.tmp`;
+    const tmp = `${this.path(session.id)}.${process.pid}.${randomUUID()}.tmp`;
     await writeFile(tmp, JSON.stringify(session));
     await rename(tmp, this.path(session.id));
   }

@@ -84,11 +84,19 @@ export class FileMemory extends InMemoryMemory {
     return super.remove(scope, id);
   }
 
-  protected override async persist() {
-    await mkdir(dirname(this.file), { recursive: true });
-    const tmp = `${this.file}.${process.pid}.tmp`;
-    await writeFile(tmp, JSON.stringify(this.records, null, 2));
-    await rename(tmp, this.file);
+  private writing = Promise.resolve();
+
+  /** Writes run one at a time (a model can save several memories at once), each to its own temporary file. */
+  protected override persist() {
+    const write = async () => {
+      await mkdir(dirname(this.file), { recursive: true });
+      const tmp = `${this.file}.${process.pid}.${randomUUID()}.tmp`;
+      await writeFile(tmp, JSON.stringify(this.records, null, 2));
+      await rename(tmp, this.file);
+    };
+    const next = this.writing.then(write, write);
+    this.writing = next.catch(() => undefined);
+    return next;
   }
 }
 
@@ -129,7 +137,9 @@ export function memoryPlugin(options: MemoryPluginOptions) {
         'When the user states a lasting preference or fact about themselves, or asks you to remember something, save it with `remember`.',
         'Do not save one-off details, secrets or passwords. When a memory is wrong or the user asks you to forget it, use `forget`.',
         shown.length ? `What you remember:\n${lines}` : 'You have no memories of this user yet.',
-        all.length > shown.length ? `There are ${all.length - shown.length} older memories; use \`recall\` to search them.` : '',
+        all.length > shown.length
+          ? `There are ${all.length - shown.length} older memories; use \`recall\` to search them.`
+          : 'That is everything you remember about this user, so there is no need to call `recall`.',
       ]
         .filter(Boolean)
         .join('\n');

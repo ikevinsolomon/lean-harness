@@ -38,6 +38,18 @@ describe('memory', () => {
     expect(requests[3]!.system).not.toContain('Prefers metric units');
   });
 
+  it('FileMemory keeps every memory when several are saved at once', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'memory-'));
+    try {
+      const file = join(dir, 'memory.json');
+      const backend = new FileMemory(file);
+      await Promise.all(['a', 'b', 'c', 'd', 'e'].map((t) => backend.add('u', `fact ${t}`)));
+      expect((await new FileMemory(file).list('u')).map((m) => m.text).sort()).toEqual(['fact a', 'fact b', 'fact c', 'fact d', 'fact e']);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('forgets and recalls, and FileMemory survives a restart', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'memory-'));
     try {

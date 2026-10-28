@@ -15,7 +15,7 @@ import {
   openrouter,
   type Provider,
 } from '@lean-harness/core';
-import { createServer, serve } from '@lean-harness/server';
+import { createServer, Hono, serve } from '@lean-harness/server';
 import { clockPlugin } from './clock-plugin.js';
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
@@ -41,7 +41,7 @@ const providers: Provider[] = [
 ];
 
 const defaultModel =
-  env.DEFAULT_MODEL ??
+  env.DEFAULT_MODEL ||
   (env.ANTHROPIC_API_KEY ? 'anthropic/claude-opus-5-5' : env.DEEPSEEK_API_KEY ? 'deepseek/deepseek-chat' : 'mock/echo');
 
 const harness = createHarness({
@@ -58,7 +58,15 @@ const harness = createHarness({
   store: new FileStore(here('../.data/sessions')),
 });
 
-const app = createServer(harness, { apiKey: env.HARNESS_API_KEY });
+const app = new Hono();
+
+// One line per API request (method, path, status, time), so you can see what the app is doing.
+app.use('/v1/*', async (c, next) => {
+  const started = Date.now();
+  await next();
+  console.log(`${c.req.method} ${c.req.path} ${c.res.status} ${Date.now() - started}ms`);
+});
+app.route('/', createServer(harness, { apiKey: env.HARNESS_API_KEY }));
 
 // The demo page and the widget bundle, served next to the API.
 const widget = here('../../../packages/widget/dist/lean-chat.js');
