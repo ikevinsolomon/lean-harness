@@ -85,3 +85,26 @@ describe('structured output', () => {
     expect(requests[0]!.tools[0]!.inputSchema).toMatchObject({ properties: { value: { type: 'array' } } });
   });
 });
+
+describe('tracing', () => {
+  it('records model and tool steps with timing, usage and cost', async () => {
+    const { tracing } = await import('../src/index.js');
+    const traces: import('../src/index.js').TurnTrace[] = [];
+    const echo = { name: 'echo', description: 'Echo', input: z.object({}), run: () => 'ok' } as Tool;
+    const { provider } = scripted([[call('echo', {})], [text('done')]]);
+    const harness = createHarness({
+      providers: [provider],
+      plugins: [{ name: 't', tools: [echo] }, tracing({ onTrace: (t) => void traces.push(t), prices: { 'test/model-a': { input: 1, output: 2 } } })],
+      defaultModel: 'test/model-a',
+    });
+    const session = await harness.createSession();
+    await harness.send(session.id, 'go');
+    expect(traces).toHaveLength(1);
+    const [trace] = traces;
+    expect(trace!.steps.map((s) => s.type)).toEqual(['model', 'tool', 'model']);
+    expect(trace!.steps[1]).toMatchObject({ type: 'tool', name: 'echo', ok: true });
+    expect(trace!.usage).toMatchObject({ inputTokens: 20, outputTokens: 10 });
+    expect(trace!.costUsd).toBeCloseTo((20 * 1 + 10 * 2) / 1_000_000);
+    expect(trace!.stopReason).toBe('end');
+  });
+});

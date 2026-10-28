@@ -15,6 +15,7 @@ import {
   openrouter,
   PostgresStore,
   SqliteStore,
+  tracing,
   webFetchPlugin,
   type Provider,
   type SessionStore,
@@ -86,6 +87,16 @@ const harness = createHarness({
     knowledgePlugin({ dir: here('../knowledge'), description: 'Lean Harness: models, tools, plugins, memory, context and the chat UI' }),
     // Reading public web pages (private and local addresses are refused).
     webFetchPlugin(),
+    // One line per reply on the console: time, tokens, tools, estimated cost.
+    // Prices are US dollars per million tokens; check your provider's current prices.
+    tracing({
+      prices: {
+        'anthropic/claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
+        'anthropic/claude-sonnet-5-5': { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
+        'anthropic/claude-haiku-5-5': { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
+        'anthropic/claude-fable-5-1': { input: 10, output: 50, cacheRead: 0.25, cacheWrite: 12.5 },
+      },
+    }),
     mcp,
   ],
   defaultModel,

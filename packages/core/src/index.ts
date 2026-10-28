@@ -32,6 +32,8 @@ export { mcpPlugin } from './plugins/mcp.js';
 export { htmlToText, isPrivateAddress, webFetchPlugin } from './plugins/web.js';
 export type { WebFetchOptions } from './plugins/web.js';
 export { subagentTool } from './plugins/subagent.js';
+export { costOf, tracing } from './plugins/tracing.js';
+export type { Price, TraceStep, TracingOptions, TurnTrace } from './plugins/tracing.js';
 export type { SubagentOptions } from './plugins/subagent.js';
 export type { McpOptions, McpPlugin, McpServerConfig, McpToolInfo } from './plugins/mcp.js';
 export type { MockOptions } from './providers/mock.js';
