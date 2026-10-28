@@ -72,9 +72,27 @@ app.get('/lean-chat.js', async (c) => {
 app.get('/logo.svg', async (c) =>
   c.body(await readFile(here('../../../assets/logo.svg'), 'utf8'), 200, { 'Content-Type': 'image/svg+xml' }),
 );
-// The full-screen chat app, and a page showing the same chat embedded in a site.
-app.get('/', async (c) => c.html(await readFile(here('../public/index.html'), 'utf8')));
+// The widget demos: the <lean-chat> element full screen, and floating on a page.
+app.get('/widget', async (c) => c.html(await readFile(here('../public/widget.html'), 'utf8')));
 app.get('/embed', async (c) => c.html(await readFile(here('../public/embed.html'), 'utf8')));
+
+// The web app (apps/web, built with `pnpm --filter @lean-harness/web build`): its files, and
+// index.html for every app route so links to /c/<id> work on reload.
+const web = here('../../../apps/web/dist');
+const TYPES: Record<string, string> = { js: 'text/javascript', css: 'text/css', svg: 'image/svg+xml', map: 'application/json' };
+app.get('/assets/:file', async (c) => {
+  const file = c.req.param('file');
+  if (!/^[\w.-]+$/.test(file)) return c.notFound();
+  try {
+    const type = TYPES[file.split('.').pop() ?? ''] ?? 'application/octet-stream';
+    return c.body(await readFile(`${web}/assets/${file}`), 200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=31536000, immutable' });
+  } catch {
+    return c.notFound();
+  }
+});
+const appPage = async () => readFile(`${web}/index.html`, 'utf8').catch(() => 'Build the web app first: pnpm --filter @lean-harness/web build');
+app.get('/', async (c) => c.html(await appPage()));
+app.get('/c/:id', async (c) => c.html(await appPage()));
 
 serve(app);
 console.log(`Default model: ${defaultModel}`);

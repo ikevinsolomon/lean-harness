@@ -20,9 +20,9 @@ export const styles = css`
     --lc-ok: #15803d;
     --lc-danger: #c2410c;
     --lc-radius: 20px;
-    --lc-font: Geist, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-    --lc-display: 'Bricolage Grotesque', var(--lc-font);
-    --lc-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    --lc-font: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --lc-display: var(--lc-font);
+    --lc-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
     --lc-shadow: 0 32px 80px -24px rgb(24 24 27 / 0.35), 0 2px 8px rgb(24 24 27 / 0.08);
 
     display: block;
@@ -176,10 +176,9 @@ export const styles = css`
     min-width: 0;
   }
   .title {
-    font-family: var(--lc-display);
-    font-size: 16px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -327,9 +326,8 @@ export const styles = css`
   .md h1,
   .md h2,
   .md h3 {
-    font-family: var(--lc-display);
-    letter-spacing: -0.015em;
-    font-size: 16px;
+    letter-spacing: -0.01em;
+    font-size: 15px;
     font-weight: 600;
     margin: 14px 0 6px;
   }
@@ -577,16 +575,14 @@ export const styles = css`
   }
   .empty h2 {
     margin: 0;
-    font-family: var(--lc-display);
-    font-size: 30px;
-    font-weight: 700;
-    letter-spacing: -0.035em;
-    line-height: 1.1;
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
   }
   .empty h2 .soft {
     display: block;
-    margin-top: 4px;
-    font-weight: 500;
+    font-weight: 400;
     color: var(--lc-muted);
   }
   .cards {

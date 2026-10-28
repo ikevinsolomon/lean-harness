@@ -28,7 +28,7 @@ pnpm install
 pnpm dev
 ```
 
-Open http://localhost:8787 for the full-screen chat app (http://localhost:8787/embed shows the same assistant embedded in a page). Without any API key you get the offline **Mock** model, which echoes and can call tools with `/tool_name {"arg": "value"}`. To use real models, copy `examples/quickstart/.env.example` to `examples/quickstart/.env` and add a key, for example `ANTHROPIC_API_KEY`. Every provider with a key appears in the model menu.
+Open http://localhost:8787 for the web app: a full chat interface with a chat history sidebar, a link per chat, search (⌘K), rename and delete, copy, retry and edit, a model menu, light and dark themes, and a phone layout. http://localhost:8787/embed shows the embeddable widget on a page. Without any API key you get the offline **Mock** model, which echoes and can call tools with `/tool_name {"arg": "value"}`. To use real models, copy `examples/quickstart/.env.example` to `examples/quickstart/.env` and add a key, for example `ANTHROPIC_API_KEY`. Every provider with a key appears in the model menu.
 
 ## Build an agent in one file
 
@@ -68,6 +68,17 @@ for await (const event of harness.run(session.id, 'Will it rain in Pune?')) {
 // One-shot, on another model:
 const { text } = await harness.send(session.id, 'And tomorrow?', { model: 'ollama/llama3.2' });
 ```
+
+## The web app
+
+`apps/web` is a React app on the same HTTP API. Routes are `/` (new chat) and `/c/:id` (a chat), so links, reload and back/forward work. For development with hot reload, run the server and the app side by side:
+
+```bash
+pnpm --filter quickstart dev        # API on :8787
+pnpm --filter @lean-harness/web dev # app on :5173, forwarding /v1 to :8787
+```
+
+`pnpm --filter @lean-harness/web build` writes `apps/web/dist`, which the quickstart server serves at `/`. To deploy it elsewhere, serve `dist` as static files with `index.html` for unknown paths, next to your API.
 
 ## Embed the chat
 
@@ -142,7 +153,7 @@ All routes are under `/v1`. Set `apiKey` (or an `authorize` function) in `create
 | `GET` | `/sessions/:id` | Session with all messages |
 | `PATCH` | `/sessions/:id` | `{ model?, title?, metadata? }`; switch the model here |
 | `DELETE` | `/sessions/:id` | |
-| `POST` | `/sessions/:id/messages` | `{ content, model?, context?, stream? }` → event stream, or JSON when `stream: false` |
+| `POST` | `/sessions/:id/messages` | `{ content, model?, context?, replaceFrom?, stream? }` → event stream, or JSON when `stream: false`. `replaceFrom` is a user message id: it and everything after it are replaced (retry, edit) |
 
 A turn streams as Server-Sent Events, one per event:
 
@@ -167,7 +178,8 @@ curl -N -X POST localhost:8787/v1/sessions/<id>/messages -H 'content-type: appli
 ```
 packages/core     the harness: loop, plugins, tools, providers, stores  (@lean-harness/core)
 packages/server   HTTP + SSE API on Hono                                 (@lean-harness/server)
-packages/widget   <lean-chat> web component on Lit                       (@lean-harness/widget)
+packages/widget   <lean-chat> web component on Lit, plus the browser API client (@lean-harness/widget)
+apps/web          the web app: React, Vite, React Router
 examples/         quickstart: a general assistant (clock tool, memory, a searchable guide) + demo pages
 ```
 

@@ -103,6 +103,10 @@ export class HarnessClient {
     return this.request<Session>(`/sessions/${encodeURIComponent(id)}`);
   }
 
+  rename(id: string, title: string) {
+    return this.request<Session>(`/sessions/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ title }) });
+  }
+
   setModel(id: string, model: string) {
     return this.request<Session>(`/sessions/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ model }) });
   }
@@ -115,12 +119,12 @@ export class HarnessClient {
   async *send(
     sessionId: string,
     content: string,
-    options: { context?: Record<string, unknown>; signal?: AbortSignal } = {},
+    options: { context?: Record<string, unknown>; replaceFrom?: string; model?: string; signal?: AbortSignal } = {},
   ): AsyncGenerator<ChatEvent> {
     const response = await fetch(this.url(`/sessions/${encodeURIComponent(sessionId)}/messages`), {
       method: 'POST',
       headers: this.headers({ Accept: 'text/event-stream' }),
-      body: JSON.stringify({ content, context: options.context }),
+      body: JSON.stringify({ content, context: options.context, replaceFrom: options.replaceFrom, model: options.model }),
       signal: options.signal,
     });
     if (!response.ok || !response.body) throw await this.error(response);

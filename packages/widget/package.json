@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     ".": "./src/lean-chat.ts",
+    "./client": "./src/client.ts",
     "./dist/lean-chat.js": "./dist/lean-chat.js"
   },
   "publishConfig": {
@@ -16,7 +17,9 @@
       }
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "vite build && tsc -p tsconfig.build.json"
   },

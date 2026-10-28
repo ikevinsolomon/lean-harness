@@ -51,10 +51,9 @@ export const pageStyles = css`
   .side-title {
     flex: 1;
     min-width: 0;
-    font-family: var(--lc-display);
-    font-size: 17px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -291,24 +290,22 @@ export const pageStyles = css`
     text-align: center;
   }
   .hero-mark {
-    width: 64px;
-    height: 64px;
-    border-radius: 18px;
-    margin-bottom: 18px;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    margin-bottom: 16px;
     box-shadow: 0 18px 40px -14px color-mix(in srgb, var(--lc-accent) 60%, transparent);
   }
   .hero h2 {
     margin: 0;
-    font-family: var(--lc-display);
-    font-size: 44px;
-    font-weight: 700;
-    letter-spacing: -0.035em;
-    line-height: 1.1;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
   }
   .hero h2 .soft {
     display: block;
-    margin-top: 4px;
-    font-weight: 500;
+    font-weight: 400;
     color: var(--lc-muted);
   }
   .hero form {
@@ -381,7 +378,7 @@ export const pageStyles = css`
       min-width: 0;
     }
     .top-brand .title {
-      font-size: 17px;
+      font-size: 15px;
     }
     .top-brand .mark {
       width: 26px;
@@ -427,7 +424,7 @@ export const pageStyles = css`
       display: none;
     }
     .hero h2 {
-      font-size: 30px;
+      font-size: 24px;
     }
     .hero .card {
       flex-direction: column;

@@ -7,9 +7,9 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "pnpm --filter @lean-harness/widget build && pnpm --filter quickstart dev",
+    "dev": "pnpm --filter @lean-harness/widget build && pnpm --filter @lean-harness/web build && pnpm --filter quickstart dev",
     "build": "pnpm -r build",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p apps/web/tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "devDependencies": {
