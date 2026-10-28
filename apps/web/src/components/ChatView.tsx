@@ -49,7 +49,13 @@ export function ChatView({ id }: { id?: string }) {
     let stale = false;
     api
       .getSession(id)
-      .then((s) => !stale && (setSession(s), (stick.current = true)))
+      .then((s) => {
+        if (stale) return;
+        setSession(s);
+        stick.current = true;
+        // Still replying (opened in another tab, or reloaded mid-reply): follow it live.
+        if (s.running) void consume(s.id, (signal) => api.follow(s.id, { signal }));
+      })
       .catch(() => !stale && (setSession(null), setError('This chat no longer exists.')));
     return () => {
       stale = true;
@@ -94,7 +100,8 @@ export function ChatView({ id }: { id?: string }) {
     switch (event.type) {
       case 'message':
         setSession((s) => {
-          if (!s) return s;
+          // A replayed turn repeats messages we already have; keep one copy.
+          if (!s || s.messages.some((m) => m.id === event.message.id)) return s;
           const list = s.messages.filter((m) => !(event.message.role === 'user' && m.id === 'pending'));
           return { ...s, messages: [...list, event.message] };
         });
@@ -127,13 +134,34 @@ export function ChatView({ id }: { id?: string }) {
     }
   }, []);
 
-  const send = async (text: string, replaceFrom?: string) => {
-    if (busy) return;
+  /** Show a reply as it streams. Used for a new message and to reconnect to one already running. */
+  async function consume(sessionId: string, events: (signal: AbortSignal) => AsyncIterable<ChatEvent>) {
     setError('');
     setBusy(true);
     stick.current = true;
     const controller = new AbortController();
     abort.current = controller;
+    try {
+      for await (const event of events(controller.signal)) apply(event);
+    } catch (e) {
+      if (!controller.signal.aborted) setError(e instanceof TypeError ? 'Lost the connection to the server.' : (e as Error).message);
+    } finally {
+      if (abort.current === controller) {
+        setBusy(false);
+        setLive(null);
+        setLiveResults(new Map());
+        setAsking(new Set());
+      }
+      // The server holds the truth: reload so stopped or failed turns show exactly what was saved.
+      if (viewing.current === sessionId) {
+        api.getSession(sessionId).then((s) => viewing.current === s.id && setSession(s), () => undefined);
+      }
+      void refreshSessions();
+    }
+  }
+
+  const send = async (text: string, replaceFrom?: string) => {
+    if (busy) return;
     let current = session;
     try {
       if (!current) {
@@ -141,27 +169,22 @@ export function ChatView({ id }: { id?: string }) {
         viewing.current = current.id;
         navigate(`/c/${current.id}`);
       }
-      const keep = replaceFrom ? current.messages.findIndex((m) => m.id === replaceFrom) : -1;
-      const pending: Message = { id: 'pending', role: 'user', parts: [{ type: 'text', text }] };
-      setSession({ ...current, messages: [...(keep >= 0 ? current.messages.slice(0, keep) : current.messages), pending] });
-      for await (const event of api.send(current.id, text, { replaceFrom, signal: controller.signal })) apply(event);
     } catch (e) {
-      if (!controller.signal.aborted) setError(e instanceof TypeError ? 'Lost the connection to the server.' : (e as Error).message);
-    } finally {
-      setBusy(false);
-      setLive(null);
-      setLiveResults(new Map());
-      setAsking(new Set());
-      // The server holds the truth: reload so stopped or failed turns show exactly what was saved.
-      const sid = current?.id;
-      if (sid && viewing.current === sid) {
-        api.getSession(sid).then((s) => viewing.current === s.id && setSession(s), () => undefined);
-      }
-      void refreshSessions();
+      setError((e as Error).message);
+      return;
     }
+    const keep = replaceFrom ? current.messages.findIndex((m) => m.id === replaceFrom) : -1;
+    const pending: Message = { id: 'pending', role: 'user', parts: [{ type: 'text', text }] };
+    setSession({ ...current, messages: [...(keep >= 0 ? current.messages.slice(0, keep) : current.messages), pending] });
+    const sid = current.id;
+    await consume(sid, (signal) => api.send(sid, text, { replaceFrom, signal }));
   };
 
-  const stop = () => abort.current?.abort();
+  // Replies run on the server, so stopping is a request; closing the stream alone would not stop it.
+  const stop = () => {
+    if (session) api.stop(session.id).catch(() => undefined);
+    abort.current?.abort();
+  };
 
   const approvals = {
     asking,

@@ -1,10 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { api, safeStorage, type SessionSummary } from './lib';
-import type { ModelInfo } from '@lean-harness/widget/client';
+import { api, isUnauthorized, safeStorage, type SessionSummary } from './lib';
+import type { ModelInfo, User } from '@lean-harness/widget/client';
 
 export type Theme = 'light' | 'dark' | 'system';
 
 interface AppState {
+  /** The signed-in user; null when the server has no sign-in. */
+  user: User | null;
+  /** The server wants a sign-in token we don't have (or ours was rejected). */
+  needsSignIn: boolean;
+  signIn(token: string): Promise<boolean>;
+  signOut(): void;
   models: ModelInfo[];
   /** The model new chats start with: the user's choice, else the server's default. */
   defaultModel: string;
@@ -53,6 +59,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [dialog, setDialog] = useState<'search' | 'settings' | null>(null);
   const [toastText, setToastText] = useState('');
   const [error, setError] = useState('');
+  const [user, setUser] = useState<User | null>(null);
+  const [needsSignIn, setNeedsSignIn] = useState(false);
+  const [loaded, setLoaded] = useState(0);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -63,15 +72,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    Promise.all([api.models(), api.tools()])
-      .then(([m, t]) => {
+    Promise.all([api.me(), api.models(), api.tools()])
+      .then(([me, m, t]) => {
+        setUser(me.user);
+        setNeedsSignIn(false);
+        setError('');
         setModels(m.models);
         setServerDefault(m.defaultModel);
         setHasMemory(t.tools.some((tool) => tool.name === 'remember'));
+        void refreshSessions();
       })
-      .catch(() => setError(`Can't reach the Lean Harness server at ${location.origin}.`));
-    void refreshSessions();
-  }, [refreshSessions]);
+      .catch((e) => (isUnauthorized(e) ? setNeedsSignIn(true) : setError(`Can't reach the Lean Harness server at ${location.origin}.`)));
+  }, [refreshSessions, loaded]);
 
   useEffect(() => {
     applyTheme(theme);
@@ -90,6 +102,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppState>(
     () => ({
+      user,
+      needsSignIn,
+      async signIn(token) {
+        api.setToken(token);
+        try {
+          await api.me();
+        } catch {
+          api.setToken(safeStorage(() => localStorage.getItem('lh:token')) ?? undefined);
+          return false;
+        }
+        safeStorage(() => localStorage.setItem('lh:token', token));
+        setLoaded((n) => n + 1);
+        return true;
+      },
+      signOut() {
+        safeStorage(() => localStorage.removeItem('lh:token'));
+        api.setToken(undefined);
+        setSessions([]);
+        setUser(null);
+        setLoaded((n) => n + 1);
+      },
       models,
       defaultModel: models.some((m) => m.id === chosenDefault) ? chosenDefault : serverDefault,
       setDefaultModel(model) {
@@ -121,7 +154,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       error,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [models, chosenDefault, serverDefault, hasMemory, sessions, refreshSessions, theme, collapsed, drawer, dialog, error],
+    [user, needsSignIn, models, chosenDefault, serverDefault, hasMemory, sessions, refreshSessions, theme, collapsed, drawer, dialog, error],
   );
 
   return (

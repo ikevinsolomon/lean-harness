@@ -115,7 +115,7 @@ export function keywordSearch<T>(items: T[], query: string, text: (item: T) => s
 
 export interface MemoryPluginOptions {
   backend: MemoryBackend;
-  /** Whose memories a session uses. Default: `session.metadata.userId`, else "default". */
+  /** Whose memories a session uses. Default: the session's owner, else `metadata.userId`, else "default". */
   scope?: (session: Session) => string;
   /** How many memories go into every request (newest first; default 30). The rest are found with `recall`. */
   inject?: number;
@@ -124,7 +124,7 @@ export interface MemoryPluginOptions {
 export function memoryPlugin(options: MemoryPluginOptions) {
   const { backend } = options;
   const inject = options.inject ?? 30;
-  const scopeOf = options.scope ?? ((s: Session) => (typeof s.metadata.userId === 'string' ? s.metadata.userId : 'default'));
+  const scopeOf = options.scope ?? ((s: Session) => s.owner ?? (typeof s.metadata.userId === 'string' ? s.metadata.userId : 'default'));
 
   return definePlugin({
     name: 'memory',

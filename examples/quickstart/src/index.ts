@@ -5,7 +5,6 @@ import {
   createHarness,
   deepseek,
   FileMemory,
-  FileStore,
   gemini,
   knowledgePlugin,
   mcpPlugin,
@@ -14,9 +13,12 @@ import {
   ollama,
   openai,
   openrouter,
+  PostgresStore,
+  SqliteStore,
   type Provider,
+  type SessionStore,
 } from '@lean-harness/core';
-import { createServer, Hono, serve } from '@lean-harness/server';
+import { createServer, Hono, serve, tokenAuth, type User } from '@lean-harness/server';
 import { clockPlugin } from './clock-plugin.js';
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
@@ -62,19 +64,30 @@ const mcp = await mcpPlugin({
 });
 for (const s of mcp.servers) console.log(`MCP server "${s.name}": ${s.tools.join(', ')}`);
 
+// Where chats are kept: Postgres when DATABASE_URL is set, else a SQLite file.
+async function openStore(): Promise<SessionStore> {
+  if (env.DATABASE_URL) {
+    const { default: pg } = await import('pg');
+    return new PostgresStore(new pg.Pool({ connectionString: env.DATABASE_URL }));
+  }
+  return SqliteStore.open(env.DATABASE_FILE || here('../.data/lean-harness.db'));
+}
+
+const memory = new FileMemory(env.MEMORY_FILE || here('../.data/memory.json'));
+
 const harness = createHarness({
   providers,
   plugins: [
     clockPlugin,
-    // Long-term memory per user (sessions created with metadata.userId), else one shared "default" user.
-    memoryPlugin({ backend: new FileMemory(here('../.data/memory.json')) }),
+    // Long-term memory per signed-in user (one shared "default" user without sign-in).
+    memoryPlugin({ backend: memory }),
     // Documents the model can search: every .md file in ./knowledge.
     knowledgePlugin({ dir: here('../knowledge'), description: 'Lean Harness: models, tools, plugins, memory, context and the chat UI' }),
     mcp,
   ],
   defaultModel,
   instructions: 'You are Lean Harness, a helpful assistant. Answer clearly and briefly.',
-  store: new FileStore(here('../.data/sessions')),
+  store: await openStore(),
 });
 
 const app = new Hono();
@@ -85,7 +98,24 @@ app.use('/v1/*', async (c, next) => {
   await next();
   console.log(`${c.req.method} ${c.req.path} ${c.res.status} ${Date.now() - started}ms`);
 });
-app.route('/', createServer(harness, { apiKey: env.HARNESS_API_KEY }));
+// Sign-in: HARNESS_USERS="asha:long-random-token,ben:another-token" gives each person their own
+// chats and memory. Without it the app is single-user (HARNESS_API_KEY can still lock it).
+const users = Object.fromEntries(
+  (list(env.HARNESS_USERS) ?? []).map((entry): [string, User] => {
+    const [id, token] = entry.split(':');
+    return [token!, { id: id!, name: id! }];
+  }),
+);
+app.route(
+  '/',
+  createServer(harness, {
+    authenticate: Object.keys(users).length ? tokenAuth(users) : undefined,
+    apiKey: env.HARNESS_API_KEY || undefined,
+    corsOrigin: env.CORS_ORIGIN || '*',
+    rateLimit: env.RATE_LIMIT_PER_MINUTE ? { windowMs: 60_000, max: Number(env.RATE_LIMIT_PER_MINUTE) } : undefined,
+    memory,
+  }),
+);
 
 // The demo page and the widget bundle, served next to the API.
 const widget = here('../../../packages/widget/dist/lean-chat.js');

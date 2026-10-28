@@ -58,6 +58,13 @@ function contextParts(context: Record<string, unknown> = {}): Part[] {
     }));
 }
 
+interface BackgroundTurn {
+  events: HarnessEvent[];
+  done: boolean;
+  wake: Set<() => void>;
+  abort: AbortController;
+}
+
 export class HarnessError extends Error {
   constructor(
     readonly code: 'not_found' | 'busy' | 'bad_request',
@@ -100,6 +107,8 @@ export class Harness {
   private readonly approvalTimeoutMs: number;
   /** Tool calls waiting for a decision, by `sessionId:callId`. */
   private readonly pending = new Map<string, (approved: boolean) => void>();
+  /** Turns running in the background, by session, with every event so far. */
+  private readonly turns = new Map<string, BackgroundTurn>();
 
   constructor(options: HarnessOptions) {
     this.plugins = [{ name: 'providers', providers: options.providers ?? [] }, ...(options.plugins ?? [])];
@@ -141,11 +150,12 @@ export class Harness {
     return [...this.tools.values()].map(toolSpec);
   }
 
-  async createSession(init: { model?: string; title?: string; metadata?: Record<string, unknown> } = {}) {
+  async createSession(init: { model?: string; title?: string; owner?: string; metadata?: Record<string, unknown> } = {}) {
     const model = init.model ?? this.defaultModel;
     this.requireProvider(model);
     const session: Session = {
       id: randomUUID(),
+      owner: init.owner,
       title: init.title,
       model,
       metadata: init.metadata ?? {},
@@ -242,6 +252,12 @@ export class Harness {
           native: done.native === undefined ? undefined : { provider: provider.id, data: done.native },
         });
 
+        // Stopped while the model was writing: keep what it wrote, run no tools.
+        if (signal.aborted) {
+          stopReason = 'aborted';
+          break;
+        }
+
         const calls = done.parts.filter((p): p is ToolCallPart => p.type === 'tool_call');
         if (calls.length === 0 || done.stopReason === 'refusal') {
           stopReason = done.stopReason === 'tool_calls' ? 'end' : done.stopReason;
@@ -304,6 +320,64 @@ export class Harness {
     }
     resolve(approved);
     return true;
+  }
+
+  /**
+   * Start a turn in the background. It keeps running when the caller goes away (a
+   * closed tab); follow it with `watch`, stop it with `stop`. Throws straight away for
+   * a missing session, a busy one, or a bad request.
+   */
+  async start(sessionId: string, input: string, options: Omit<RunOptions, 'signal'> = {}): Promise<void> {
+    const abort = new AbortController();
+    const events = this.run(sessionId, input, { ...options, signal: abort.signal });
+    const first = await events.next();
+    const turn: BackgroundTurn = { events: [], done: false, wake: new Set(), abort };
+    this.turns.set(sessionId, turn);
+    const push = (event: HarnessEvent) => {
+      turn.events.push(event);
+      for (const wake of turn.wake) wake();
+    };
+    if (!first.done) push(first.value);
+    void (async () => {
+      try {
+        for await (const event of events) push(event);
+      } catch (error) {
+        push({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+      } finally {
+        turn.done = true;
+        for (const wake of turn.wake) wake();
+        // Keep the finished turn briefly, so a client that reconnects late still gets the end.
+        setTimeout(() => this.turns.get(sessionId) === turn && this.turns.delete(sessionId), 60_000).unref?.();
+      }
+    })();
+  }
+
+  /** Every event of the session's current (or just finished) background turn, from `from`, then live ones. */
+  async *watch(sessionId: string, from = 0): AsyncGenerator<HarnessEvent> {
+    const turn = this.turns.get(sessionId);
+    if (!turn) return;
+    let i = from;
+    for (;;) {
+      while (i < turn.events.length) yield turn.events[i++]!;
+      if (turn.done) return;
+      await new Promise<void>((resolve) => {
+        const wake = () => (turn.wake.delete(wake), resolve());
+        turn.wake.add(wake);
+      });
+    }
+  }
+
+  /** Stop the session's background turn. Returns false if none is running. */
+  stop(sessionId: string): boolean {
+    const turn = this.turns.get(sessionId);
+    if (!turn || turn.done) return false;
+    turn.abort.abort();
+    return true;
+  }
+
+  /** Whether a turn is running for this session right now. */
+  isRunning(sessionId: string) {
+    return this.running.has(sessionId);
   }
 
   /** Run a turn to completion and return the new messages (for non-streaming callers). */

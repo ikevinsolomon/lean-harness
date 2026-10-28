@@ -7,6 +7,14 @@ export type SessionSummary = Omit<Session, 'messages'> & { messageCount: number 
 
 export type SessionPatch = Partial<Pick<Session, 'title' | 'model' | 'metadata'>>;
 
+export interface SessionFilter {
+  owner?: string;
+}
+
+export function matches(session: Pick<Session, 'owner'>, filter: SessionFilter = {}) {
+  return filter.owner === undefined || session.owner === filter.owner;
+}
+
 /**
  * Where sessions live. Messages are never edited: history only grows, or is cut
  * back to an earlier point (retry, edit). Every earlier turn stays byte-for-byte
@@ -15,7 +23,8 @@ export type SessionPatch = Partial<Pick<Session, 'title' | 'model' | 'metadata'>
 export interface SessionStore {
   create(session: Session): Promise<Session>;
   get(id: string): Promise<Session | undefined>;
-  list(): Promise<SessionSummary[]>;
+  /** Newest first. With `owner`, only that user's sessions. */
+  list(filter?: SessionFilter): Promise<SessionSummary[]>;
   update(id: string, patch: SessionPatch): Promise<Session>;
   append(id: string, messages: Message[]): Promise<Session>;
   /** Keep the first `count` messages and drop the rest. */
@@ -23,11 +32,11 @@ export interface SessionStore {
   delete(id: string): Promise<boolean>;
 }
 
-function summarize({ messages, ...rest }: Session): SessionSummary {
+export function summarize({ messages, ...rest }: Session): SessionSummary {
   return { ...rest, messageCount: messages.length };
 }
 
-function byNewest(a: SessionSummary, b: SessionSummary): number {
+export function byNewest(a: SessionSummary, b: SessionSummary): number {
   return b.updatedAt.localeCompare(a.updatedAt);
 }
 
@@ -48,8 +57,8 @@ export class MemoryStore implements SessionStore {
     return session && structuredClone(session);
   }
 
-  async list() {
-    return [...this.sessions.values()].map(summarize).sort(byNewest);
+  async list(filter?: SessionFilter) {
+    return [...this.sessions.values()].filter((s) => matches(s, filter)).map(summarize).sort(byNewest);
   }
 
   async update(id: string, patch: SessionPatch) {
@@ -102,7 +111,7 @@ export class FileStore implements SessionStore {
     }
   }
 
-  async list() {
+  async list(filter?: SessionFilter) {
     let files: string[];
     try {
       files = await readdir(this.dir);
@@ -112,7 +121,7 @@ export class FileStore implements SessionStore {
     const sessions = await Promise.all(
       files.filter((f) => f.endsWith('.json')).map((f) => this.get(f.slice(0, -5))),
     );
-    return sessions.filter((s): s is Session => !!s).map(summarize).sort(byNewest);
+    return sessions.filter((s): s is Session => !!s && matches(s, filter)).map(summarize).sort(byNewest);
   }
 
   async update(id: string, patch: SessionPatch) {

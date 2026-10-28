@@ -3,7 +3,7 @@ import { Link, useMatch, useNavigate } from 'react-router';
 import { api, groupByDate, mod, type SessionSummary } from '../lib';
 import { useApp } from '../store';
 import { ConfirmDialog } from './Dialog';
-import { Brain, Edit, More, NewChat, Search, Settings, Sidebar as SidebarIcon, Trash } from './Icons';
+import { Brain, Edit, More, NewChat, Search, Settings, SignOut, Sidebar as SidebarIcon, Trash } from './Icons';
 import { Popover } from './Popover';
 
 function ChatRow({ session, active }: { session: SessionSummary; active: boolean }) {
@@ -81,7 +81,7 @@ function ChatRow({ session, active }: { session: SessionSummary; active: boolean
 }
 
 export function Sidebar() {
-  const { sessions, hasMemory, setDialog, setDrawer, toggleSidebar } = useApp();
+  const { sessions, hasMemory, setDialog, setDrawer, toggleSidebar, user, signOut } = useApp();
   const match = useMatch('/c/:id');
 
   return (
@@ -122,14 +122,28 @@ export function Sidebar() {
         )}
       </div>
       <div className="side-foot">
-        <span className="memory-badge">
-          {hasMemory && (
-            <>
-              <Brain size={15} />
-              Memory on
-            </>
-          )}
-        </span>
+        {user ? (
+          <span className="user-chip" title={user.email ?? user.id}>
+            <span className="avatar" aria-hidden="true">
+              {(user.name ?? user.email ?? user.id).charAt(0).toUpperCase()}
+            </span>
+            <span className="name">{user.name ?? user.email ?? user.id}</span>
+          </span>
+        ) : (
+          <span className="memory-badge">
+            {hasMemory && (
+              <>
+                <Brain size={15} />
+                Memory on
+              </>
+            )}
+          </span>
+        )}
+        {user && (
+          <button className="icon-btn" title="Sign out" aria-label="Sign out" onClick={signOut}>
+            <SignOut />
+          </button>
+        )}
         <button className="icon-btn" title="Settings" aria-label="Settings" onClick={() => (setDrawer(false), setDialog('settings'))}>
           <Settings />
         </button>

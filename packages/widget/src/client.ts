@@ -23,6 +23,7 @@ export interface Message {
 
 export interface Session {
   id: string;
+  running?: boolean;
   title?: string;
   model: string;
   messages: Message[];
@@ -30,6 +31,7 @@ export interface Session {
 
 export interface SessionSummary {
   id: string;
+  running?: boolean;
   title?: string;
   model: string;
   updatedAt: string;
@@ -56,11 +58,67 @@ export class ApiError extends Error {
   }
 }
 
+export interface User {
+  id: string;
+  name?: string;
+  email?: string;
+}
+
+export interface MemoryRecord {
+  id: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface SearchResult {
+  sessionId: string;
+  title?: string;
+  messageId: string;
+  role: string;
+  snippet: string;
+}
+
 export class HarnessClient {
   constructor(
     private readonly endpoint: string,
-    private readonly token?: string,
+    private token?: string,
   ) {}
+
+  /** Use a different sign-in token for the following requests (empty to sign out). */
+  setToken(token?: string) {
+    this.token = token || undefined;
+  }
+
+  me() {
+    return this.request<{ user: User | null }>('/me');
+  }
+
+  /** Stop the session's running reply. Closing a stream does not stop it. */
+  stop(sessionId: string) {
+    return this.request<{ stopped: boolean }>(`/sessions/${encodeURIComponent(sessionId)}/stop`, { method: 'POST', body: '{}' });
+  }
+
+  memories() {
+    return this.request<{ memories: MemoryRecord[] }>('/memories');
+  }
+
+  deleteMemory(id: string) {
+    return this.request<void>(`/memories/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  search(query: string) {
+    return this.request<{ results: SearchResult[] }>(`/search?q=${encodeURIComponent(query)}`);
+  }
+
+  /** Follow a reply that is already running (after a reload), from the start or from event `from`. */
+  async *follow(sessionId: string, options: { from?: number; signal?: AbortSignal } = {}): AsyncGenerator<ChatEvent> {
+    const response = await fetch(this.url(`/sessions/${encodeURIComponent(sessionId)}/stream?from=${options.from ?? 0}`), {
+      headers: this.headers({ Accept: 'text/event-stream' }),
+      signal: options.signal,
+    });
+    if (!response.ok || !response.body) throw await this.error(response);
+    yield* this.events(response.body);
+  }
 
   private url(path: string) {
     return `${this.endpoint.replace(/\/$/, '')}/v1${path}`;
@@ -137,9 +195,12 @@ export class HarnessClient {
       signal: options.signal,
     });
     if (!response.ok || !response.body) throw await this.error(response);
+    yield* this.events(response.body);
+  }
 
-    // Server-Sent Events: blocks separated by a blank line; we only need the data lines.
-    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  /** Server-Sent Events: blocks separated by a blank line; we only need the data lines. */
+  private async *events(body: NonNullable<Response['body']>): AsyncGenerator<ChatEvent> {
+    const reader = body.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = '';
     for (;;) {
       const { value, done } = await reader.read();

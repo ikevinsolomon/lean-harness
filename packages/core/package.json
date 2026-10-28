@@ -26,5 +26,8 @@
     "@modelcontextprotocol/sdk": "^1.32.2",
     "openai": "^7.45.1",
     "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.13"
   }
 }

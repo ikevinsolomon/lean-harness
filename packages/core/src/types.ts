@@ -68,6 +68,8 @@ export interface Message {
 
 export interface Session {
   id: string;
+  /** Who the session belongs to (a user id). Unset when the app has no sign-in. */
+  owner?: string;
   title?: string;
   /** Default `provider/model` for this session; any turn can override it. */
   model: string;

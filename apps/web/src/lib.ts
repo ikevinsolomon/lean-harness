@@ -1,9 +1,6 @@
-import { HarnessClient, type Message, type Part, type SessionSummary } from '@lean-harness/widget/client';
+import { ApiError, HarnessClient, type Message, type Part, type SessionSummary } from '@lean-harness/widget/client';
 import DOMPurify from 'dompurify';
 import { Marked } from 'marked';
-
-/** The API lives on the same origin (in development Vite forwards /v1 to it). */
-export const api = new HarnessClient(location.origin, import.meta.env.VITE_HARNESS_API_KEY);
 
 export function safeStorage<T>(fn: () => T): T | undefined {
   try {
@@ -12,6 +9,9 @@ export function safeStorage<T>(fn: () => T): T | undefined {
     return undefined; // private mode or blocked storage
   }
 }
+
+/** The API lives on the same origin. The sign-in token, if any, is kept in this browser. */
+export const api = new HarnessClient(location.origin, safeStorage(() => localStorage.getItem('lh:token')) ?? import.meta.env.VITE_HARNESS_API_KEY);
 
 export const PROVIDER_COLORS: Record<string, string> = {
   anthropic: '#d97757',
@@ -109,5 +109,7 @@ export function relativeDate(iso: string) {
 
 export const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 export const mod = isMac ? '⌘' : 'Ctrl';
+
+export const isUnauthorized = (e: unknown) => e instanceof ApiError && e.status === 401;
 
 export type { Message, Part, SessionSummary };

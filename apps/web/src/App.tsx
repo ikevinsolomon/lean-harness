@@ -3,6 +3,7 @@ import { useMatch, useNavigate } from 'react-router';
 import { ChatView } from './components/ChatView';
 import { SearchDialog } from './components/SearchDialog';
 import { SettingsDialog } from './components/SettingsDialog';
+import { SignIn } from './components/SignIn';
 import { Sidebar } from './components/Sidebar';
 import { isMac } from './lib';
 import { useApp } from './store';
@@ -13,7 +14,7 @@ import { useApp } from './store';
  * new chat gets its id mid-stream.
  */
 export function App() {
-  const { collapsed, drawer, setDrawer, dialog, setDialog, toggleSidebar } = useApp();
+  const { collapsed, drawer, setDrawer, dialog, setDialog, toggleSidebar, needsSignIn } = useApp();
   const match = useMatch('/c/:id');
   const navigate = useNavigate();
 
@@ -37,6 +38,8 @@ export function App() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [dialog, navigate, setDialog, toggleSidebar]);
+
+  if (needsSignIn) return <SignIn />;
 
   return (
     <div className={`app ${collapsed ? 'collapsed' : ''} ${drawer ? 'drawer' : ''}`}>

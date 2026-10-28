@@ -382,7 +382,9 @@ export class LeanChat extends LitElement {
     }
   }
 
+  /** Stop the reply. Replies run on the server, so closing the stream alone would not stop it. */
   stop() {
+    if (this.sessionId) this.client.stop(this.sessionId).catch(() => undefined);
     this.abort?.abort();
   }
 

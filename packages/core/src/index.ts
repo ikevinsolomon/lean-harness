@@ -5,7 +5,9 @@ export type { Hooks, HookContext, PendingToolCall, Plugin } from './plugin.js';
 export { defineTool, toolSpec, toolOutputText } from './tool.js';
 export type { Tool, ToolContext } from './tool.js';
 export { FileStore, MemoryStore } from './store.js';
-export type { SessionPatch, SessionStore, SessionSummary } from './store.js';
+export type { SessionFilter, SessionPatch, SessionStore, SessionSummary } from './store.js';
+export { PostgresStore, SqliteStore } from './stores/sql.js';
+export type { PostgresClient } from './stores/sql.js';
 export { anthropic, supportsAdaptiveThinking, toAnthropicMessages } from './providers/anthropic.js';
 export type { AnthropicOptions } from './providers/anthropic.js';
 export {
