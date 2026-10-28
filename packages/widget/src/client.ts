@@ -93,6 +93,13 @@ export interface AuthStatus {
   user: User | null;
 }
 
+/** How the server's app presents itself: name, tagline, starter prompts. */
+export interface AppInfo {
+  name: string;
+  tagline?: string;
+  suggestions: { title: string; detail?: string; prompt?: string; icon?: 'spark' | 'tool' | 'clock' | 'memory' | 'search' | 'doc' }[];
+}
+
 type NewAccount = { name: string; email: string; password: string };
 
 export interface MemoryRecord {
@@ -118,6 +125,11 @@ export class HarnessClient {
   /** Use a different sign-in token for the following requests (empty to sign out). */
   setToken(token?: string) {
     this.token = token || undefined;
+  }
+
+  /** Name, tagline and starter prompts (no sign-in needed). */
+  appInfo() {
+    return this.request<AppInfo>('/app');
   }
 
   me() {
@@ -155,6 +167,24 @@ export class HarnessClient {
       method: 'POST',
       body: JSON.stringify(account),
     });
+  }
+
+  /** Who a password reset link is for. */
+  resetInfo(token: string) {
+    return this.request<{ reset: { name: string; email: string } }>(`/auth/resets/${encodeURIComponent(token)}`);
+  }
+
+  /** Set a new password with a reset link; signs in. */
+  resetPassword(token: string, password: string) {
+    return this.request<{ user: User; token: string }>(`/auth/resets/${encodeURIComponent(token)}`, {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    });
+  }
+
+  /** Admin only: a one-time link (24 hours) that lets someone set a new password. */
+  createResetLink(userId: string) {
+    return this.request<{ token: string; expiresAt: string }>(`/admin/users/${encodeURIComponent(userId)}/reset`, { method: 'POST', body: '{}' });
   }
 
   /** Admin only: people, and invite links. */

@@ -94,6 +94,30 @@ describe.each([
     expect((await app.request(`/v1/admin/users/${ashaId}`, { method: 'DELETE', ...as(adminToken) })).status).toBe(204);
   });
 
+  it('resets a forgotten password with a one-time link from the admin', async () => {
+    const { app } = await setup();
+    const { token: adminToken } = await (await app.request('/v1/auth/setup', post(admin))).json();
+    const invited = await (await app.request('/v1/admin/invites', post({}, bearer(adminToken)))).json();
+    const asha = await (
+      await app.request(`/v1/auth/invites/${invited.token}/accept`, post({ name: 'Asha', email: 'asha@example.com', password: 'first password' }))
+    ).json();
+
+    // Members can't make reset links.
+    expect((await app.request(`/v1/admin/users/${asha.user.id}/reset`, post({}, bearer(asha.token)))).status).toBe(403);
+    const link = await (await app.request(`/v1/admin/users/${asha.user.id}/reset`, post({}, bearer(adminToken)))).json();
+    expect(await (await app.request(`/v1/auth/resets/${link.token}`)).json()).toEqual({ reset: { name: 'Asha', email: 'asha@example.com' } });
+
+    expect((await app.request(`/v1/auth/resets/${link.token}`, post({ password: 'short' }))).status).toBe(400);
+    const done = await app.request(`/v1/auth/resets/${link.token}`, post({ password: 'second password' }));
+    expect(done.status).toBe(200);
+    expect(done.headers.get('Set-Cookie')).toContain('lh_session=');
+
+    // The link worked once; old sign-ins are gone; the new password works.
+    expect((await app.request(`/v1/auth/resets/${link.token}`)).status).toBe(404);
+    expect((await app.request('/v1/me', { headers: bearer(asha.token) })).status).toBe(401);
+    expect((await app.request('/v1/auth/login', post({ email: 'asha@example.com', password: 'second password' }))).status).toBe(200);
+  });
+
   it('changes passwords and signs out other devices', async () => {
     const { app } = await setup();
     const { token: first } = await (await app.request('/v1/auth/setup', post(admin))).json();
@@ -103,6 +127,18 @@ describe.each([
     expect((await app.request('/v1/me', { headers: bearer(first) })).status).toBe(200);
     expect((await app.request('/v1/me', { headers: bearer(second) })).status).toBe(401);
     expect((await app.request('/v1/auth/login', post({ ...admin, password: 'new password' }))).status).toBe(200);
+  });
+});
+
+describe('app info', () => {
+  it('tells any visitor the app name and starter prompts', async () => {
+    const harness = createHarness({ providers: [mock({ delayMs: 0 })], defaultModel: 'mock/echo' });
+    const app = createServer(harness, {
+      accounts: new Accounts(await openSqlite()),
+      app: { name: 'Support Desk', suggestions: [{ title: 'Find an order', icon: 'search' }] },
+    });
+    expect(await (await app.request('/v1/app')).json()).toEqual({ name: 'Support Desk', suggestions: [{ title: 'Find an order', icon: 'search' }] });
+    expect((await app.request('/v1/sessions')).status).toBe(401);
   });
 });
 

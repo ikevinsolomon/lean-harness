@@ -75,12 +75,12 @@ function useNewAccount(email = '') {
 }
 
 function Setup() {
-  const { reload } = useApp();
+  const { reload, info } = useApp();
   const { form, set, complete } = useNewAccount();
   const { busy, error, run } = useSubmit();
   return (
     <Card
-      title="Welcome to Lean Harness"
+      title={`Welcome to ${info.name}`}
       intro="Create the admin account. After this, people join only through invite links you share."
       error={error}
       onSubmit={(e) => {
@@ -97,13 +97,13 @@ function Setup() {
 }
 
 function Login() {
-  const { reload } = useApp();
+  const { reload, info } = useApp();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const { busy, error, run } = useSubmit();
   return (
     <Card
-      title="Sign in to Lean Harness"
+      title={`Sign in to ${info.name}`}
       intro="Use the email and password for your account."
       error={error}
       onSubmit={(e) => {
@@ -126,12 +126,12 @@ function Login() {
  * login (Supabase, Auth0, Clerk...) would put its sign-in here and hand the token to `signIn`.
  */
 function TokenSignIn() {
-  const { signIn } = useApp();
+  const { signIn, info } = useApp();
   const [token, setToken] = useState('');
   const { busy, error, run } = useSubmit();
   return (
     <Card
-      title="Sign in to Lean Harness"
+      title={`Sign in to ${info.name}`}
       intro="Paste the access token you were given."
       error={error}
       onSubmit={(e) => {
@@ -161,7 +161,7 @@ export function SignIn() {
 export function AcceptInvite() {
   const { token = '' } = useParams();
   const navigate = useNavigate();
-  const { reload } = useApp();
+  const { reload, info } = useApp();
   const { form, setForm, set, complete } = useNewAccount();
   const { busy, error, run } = useSubmit();
   const [invite, setInvite] = useState<{ email?: string } | null | 'loading'>('loading');
@@ -188,7 +188,7 @@ export function AcceptInvite() {
   }
   return (
     <Card
-      title="Join Lean Harness"
+      title={`Join ${info.name}`}
       intro="You've been invited. Set your name and a password to get started."
       error={error}
       onSubmit={(e) => {
@@ -203,6 +203,51 @@ export function AcceptInvite() {
       <NewAccountFields {...form} set={set} lockedEmail={Boolean(invite.email)} />
       <button className="btn primary" type="submit" disabled={!complete || busy}>
         {busy ? 'Joining…' : 'Create account'}
+      </button>
+    </Card>
+  );
+}
+
+/** /reset/:token — a password reset link from the admin (or the recovery command). */
+export function ResetPassword() {
+  const { token = '' } = useParams();
+  const navigate = useNavigate();
+  const { reload } = useApp();
+  const [who, setWho] = useState<{ name: string; email: string } | null | 'loading'>('loading');
+  const [password, setPassword] = useState('');
+  const { busy, error, run } = useSubmit();
+
+  useEffect(() => {
+    api.resetInfo(token).then(({ reset }) => setWho(reset), () => setWho(null));
+  }, [token]);
+
+  if (who === 'loading') return <main className="signin" />;
+  if (!who) {
+    return (
+      <Card title="This reset link doesn't work" intro="It has expired or was already used. Ask your admin for a new one." error="">
+        <Link className="btn primary" to="/">
+          Go to sign in
+        </Link>
+      </Card>
+    );
+  }
+  return (
+    <Card
+      title="Set a new password"
+      intro={`For ${who.name} (${who.email}). You'll be signed out on your other devices.`}
+      error={error}
+      onSubmit={(e) => {
+        e.preventDefault();
+        void run(async () => {
+          await api.resetPassword(token, password);
+          reload();
+          navigate('/', { replace: true });
+        });
+      }}
+    >
+      <Field id="password" label="New password (at least 8 characters)" type="password" autoComplete="new-password" autoFocus value={password} onChange={setPassword} />
+      <button className="btn primary" type="submit" disabled={password.length < 8 || busy}>
+        {busy ? 'Saving…' : 'Set password and sign in'}
       </button>
     </Card>
   );

@@ -5,6 +5,7 @@
 **A small, readable agent harness for TypeScript.** Any model, your tools, an HTTP API, and a chat UI you can drop into any page.
 
 - **Any model, switchable on the fly.** Claude, OpenAI, DeepSeek, Gemini, OpenRouter, Ollama, or anything that speaks the OpenAI API. Change the model per session or per message, even mid-conversation.
+- **One assistant per domain, in minutes.** `pnpm new-agent support-desk` makes a folder with its instructions, tools, knowledge and MCP servers; everything else comes with it.
 - **Everything is a plugin.** A domain (support desk, analytics, travel, ...) is a plugin: instructions, tools and hooks. Model providers are plugins too.
 - **API-first.** A plain HTTP + Server-Sent Events API, so you can build any UI on top: web, mobile, Slack, CLI.
 - **A UI you can embed anywhere.** `<lean-chat>` is a web component: a full-screen chat app like Claude or ChatGPT, a box in your page, or a floating button. Two lines of HTML, any framework, light and dark, themeable.
@@ -30,6 +31,42 @@ pnpm dev
 ```
 
 Open http://localhost:8787. The first visit asks you to create the admin account (email and password); after that, invite people from **People** in the sidebar. This is the web app: a full chat interface with a chat history sidebar, a link per chat, search (⌘K), rename and delete, copy, retry and edit, a model menu, light and dark themes, and a phone layout. http://localhost:8787/embed shows the embeddable widget on a page. Without any API key you get the offline **Mock** model, which echoes and can call tools with `/tool_name {"arg": "value"}`. To use real models, copy `examples/quickstart/.env.example` to `examples/quickstart/.env` and add a key, for example `ANTHROPIC_API_KEY`. Every provider with a key appears in the model menu.
+
+## Start a new assistant
+
+Each domain gets its own small folder; the web app, accounts, memory and API come from `@lean-harness/app`.
+
+```bash
+pnpm new-agent support-desk --name "Support Desk"   # makes agents/support-desk
+pnpm install
+cp agents/support-desk/.env.example agents/support-desk/.env   # add a model key
+pnpm --filter support-desk dev                       # http://localhost:8787
+```
+
+Outside this repository (once the packages are on npm): `npm create lean-harness@latest support-desk -- --name "Support Desk"`.
+
+| In the folder | What it is |
+|---|---|
+| `instructions.md` | Who the assistant is and how it behaves |
+| `src/tools.ts` | What it can do: your APIs, databases and actions (two examples, one that asks before running) |
+| `knowledge/*.md` | Documents it searches before answering |
+| `mcp.json` | MCP servers, in Claude Desktop's format |
+| `src/index.ts` | Its name, starter prompts and options, in one `startApp` call |
+| `test/` | Tests for your tools, no model needed |
+
+```ts
+import { startApp } from '@lean-harness/app';
+import { tools } from './tools.js';
+
+await startApp({
+  root: new URL('..', import.meta.url),
+  name: 'Support Desk',
+  tools,
+  suggestions: [{ title: 'Where is order 1042?', icon: 'search' }],
+});
+```
+
+`startApp` reads model keys and settings from `.env`, keeps everything in one database, serves the web app (with your name, starter prompts and an optional `logo.svg`) and the widget, and shuts down cleanly. Pass `plugins`, `harness` (`maxSteps`, `budget`...) and `configure(app)` for your own routes.
 
 ## Build an agent in one file
 
@@ -181,6 +218,7 @@ All routes are under `/v1`. With sign-in on (`accounts` or `authenticate`), ever
 | Method | Path | |
 |---|---|---|
 | `GET` | `/health` | Liveness (no auth) |
+| `GET` | `/app` | `{ name, tagline?, suggestions }` for the UI (no auth) |
 | `GET` | `/me` | `{ user }`, or `{ user: null }` without sign-in |
 | `GET` | `/models` | `{ defaultModel, models: [{ id, provider, model, label }] }` |
 | `GET` | `/tools` | Tools and their JSON Schemas |
@@ -199,6 +237,8 @@ All routes are under `/v1`. With sign-in on (`accounts` or `authenticate`), ever
 | `POST` | `/auth/login`, `/auth/logout` | `{ email, password }` → `{ user, token }` plus an httpOnly cookie |
 | `POST` | `/auth/password` | `{ current, next }`: change your password; signs out your other devices |
 | `GET`, `POST` | `/auth/invites/:token`, `/auth/invites/:token/accept` | Look at an invite; accept it with `{ name, email, password }` |
+| `GET`, `POST` | `/auth/resets/:token` | Look at a password reset link; set the new password with `{ password }` |
+| `POST` | `/admin/users/:id/reset` | Admin only: a password reset link → `{ token, expiresAt }` (the link is `/reset/<token>`) |
 | `GET`, `PATCH`, `DELETE` | `/admin/users`, `/admin/users/:id` | Admin only: people; `{ disabled?, role? }` |
 | `GET`, `POST`, `DELETE` | `/admin/invites`, `/admin/invites/:id` | Admin only: open invites; `POST { email?, role? }` → `{ invite, token }` (the link is `/invite/<token>`) |
 | `POST` | `/sessions/:id/messages` | `{ content, model?, context?, files?, replaceFrom?, stream? }` → event stream, or JSON when `stream: false`. `replaceFrom` is a user message id: it and everything after it are replaced (retry, edit) |
@@ -243,6 +283,8 @@ createServer(harness, { authenticate: tokenAuth({ 'long-random-token': { id: 'as
 createServer(harness, { authenticate: jwtAuth({ secret: process.env.SUPABASE_JWT_SECRET!, audience: 'authenticated' }) });
 createServer(harness, { authenticate: async (req) => (await mySession(req)) ?? null }); // any sign-in system
 ```
+
+**Forgotten passwords.** The admin makes a one-time reset link from **People** (row menu → Reset password); it works for 24 hours and signs the person out everywhere else. If the admin is locked out, run `pnpm reset-password` in the app's folder (`pnpm reset-password someone@example.com` for anyone else): it prints a link. Set `PUBLIC_URL` so the link uses your real address.
 
 In the quickstart, `HARNESS_USERS=asha:token1,ben:token2` switches to access tokens, and `AUTH=off` turns sign-in off (a single-user app on your own machine). When accounts are switched on for an existing install, chats made before belong to the admin.
 
@@ -315,8 +357,11 @@ For production: put it behind HTTPS (the sign-in cookie is marked Secure there),
 packages/core     the harness: loop, plugins, tools, providers, stores  (@lean-harness/core)
 packages/server   HTTP + SSE API on Hono                                 (@lean-harness/server)
 packages/widget   <lean-chat> web component on Lit, plus the browser API client (@lean-harness/widget)
+packages/app      startApp: a complete assistant from one call                 (@lean-harness/app)
+packages/create-lean-harness   the starter for new assistants (npm create lean-harness)
 apps/web          the web app: React, Vite, React Router
 examples/         quickstart: a general assistant (clock tool, memory, a searchable guide) + demo pages
+agents/           your assistants, made with pnpm new-agent
 ```
 
 ## Development

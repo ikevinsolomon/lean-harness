@@ -4,6 +4,9 @@
 
 First version.
 
+- **New assistants in minutes:** `pnpm new-agent` / `npm create lean-harness` makes a
+  folder per domain (instructions, tools, knowledge, MCP, tests); `@lean-harness/app`
+  runs it with one `startApp` call, branded with its own name and starter prompts.
 - **Core:** agent loop with streaming, parallel tool calls and step limits; plugins
   (instructions, tools, providers, hooks); Zod-validated tools.
 - **Models:** Anthropic (official SDK; adaptive thinking, prompt caching, refusal
@@ -14,7 +17,8 @@ First version.
 - **Tools:** MCP servers (local and remote), approvals (allow once, always, deny),
   web fetch with network protections, sub-agents, structured output.
 - **Accounts:** email and password with one admin and invite links (People screen,
-  turn accounts off, make admins), change password, scrypt hashing, httpOnly cookies,
+  turn accounts off, make admins), change password, password reset links (from People,
+  or `pnpm reset-password` for a locked-out admin), scrypt hashing, httpOnly cookies,
   cross-site protection and sign-in throttling. Or bring your own sign-in (tokens, JWT).
 - **Claude server tools:** web search and code execution, with paused turns resumed
   automatically.

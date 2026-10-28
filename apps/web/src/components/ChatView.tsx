@@ -4,21 +4,17 @@ import type { ChatEvent, Session } from '@lean-harness/widget/client';
 import { api, greeting, mod, textOf, type Message } from '../lib';
 import { useApp } from '../store';
 import { Composer, type Attachment } from './Composer';
-import { Alert, Clock, Close, Down, Menu, NewChat, Sidebar as SidebarIcon, Spark, Wrench, Brain } from './Icons';
+import { Alert, Brain, Clock, Close, Down, FileIcon, Menu, NewChat, Search, Sidebar as SidebarIcon, Spark, Wrench } from './Icons';
 import { AssistantTurn, buildTurns, resultsOf, UserTurn, type Live, type Results } from './Messages';
 import { ModelMenu } from './ModelMenu';
 
-const SUGGESTIONS = [
-  { title: 'What can you do?', detail: 'Tools, memory and models', icon: Spark },
-  { title: 'How do I add a tool?', detail: 'From the built-in guide', icon: Wrench },
-  { title: 'What time is it in Tokyo?', detail: 'Uses the clock tool', icon: Clock },
-  { title: 'Remember I like short answers', detail: 'Saved to long-term memory', icon: Brain },
-];
+/** Icons a server can pick for its starter prompts. */
+const ICONS = { spark: Spark, tool: Wrench, clock: Clock, memory: Brain, search: Search, doc: FileIcon };
 
 /** One conversation, or a new one when `id` is undefined. Streams replies over the HTTP API. */
 export function ChatView({ id }: { id?: string }) {
   const app = useApp();
-  const { models, defaultModel, refreshSessions, toggleSidebar } = app;
+  const { models, defaultModel, refreshSessions, toggleSidebar, info } = app;
   const navigate = useNavigate();
   const [session, setSession] = useState<Session | null>(null);
   const [newModel, setNewModel] = useState('');
@@ -64,8 +60,8 @@ export function ChatView({ id }: { id?: string }) {
   }, [id]);
 
   useEffect(() => {
-    document.title = session?.title ? `${session.title} · Lean Harness` : 'Lean Harness';
-  }, [session?.title]);
+    document.title = session?.title ? `${session.title} · ${info.name}` : info.name;
+  }, [session?.title, info.name]);
 
   const messages = session?.messages ?? [];
   const model = session?.model ?? (newModel || defaultModel);
@@ -267,25 +263,28 @@ export function ChatView({ id }: { id?: string }) {
               <img className="hero-mark" src="/logo.svg" alt="" />
               <h1>
                 {greeting()}
-                <span className="soft">How can I help you today?</span>
+                <span className="soft">{info.tagline ?? 'How can I help you today?'}</span>
               </h1>
             </div>
             {banner}
             <div className="composer-wrap">
-              <Composer busy={busy} placeholder="Ask Lean Harness anything…" onSend={(t, files) => send(t, undefined, files)} onStop={stop} autoFocus />
+              <Composer busy={busy} placeholder={`Ask ${info.name} anything…`} onSend={(t, files) => send(t, undefined, files)} onStop={stop} autoFocus />
             </div>
             <div className="cards">
-              {SUGGESTIONS.map(({ title, detail, icon: Icon }) => (
-                <button key={title} className="card" onClick={() => send(title)}>
+              {info.suggestions.slice(0, 4).map(({ title, detail, prompt, icon }) => {
+                const Icon = ICONS[icon ?? 'spark'] ?? Spark;
+                return (
+                <button key={title} className="card" onClick={() => send(prompt ?? title)}>
                   <span className="tile">
                     <Icon size={18} />
                   </span>
                   <span>
                     <b>{title}</b>
-                    <small>{detail}</small>
+                    {detail && <small>{detail}</small>}
                   </span>
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -328,8 +327,8 @@ export function ChatView({ id }: { id?: string }) {
           </button>
         )}
         {banner}
-        <Composer busy={busy} placeholder="Reply to Lean Harness…" onSend={(t, files) => send(t, undefined, files)} onStop={stop} autoFocus />
-        <p className="disclaimer">Lean Harness can make mistakes. Check important information.</p>
+        <Composer busy={busy} placeholder={`Reply to ${info.name}…`} onSend={(t, files) => send(t, undefined, files)} onStop={stop} autoFocus />
+        <p className="disclaimer">{info.name} can make mistakes. Check important information.</p>
       </div>
     </main>
   );

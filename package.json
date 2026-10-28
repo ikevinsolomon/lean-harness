@@ -10,7 +10,8 @@
     "dev": "pnpm --filter @lean-harness/widget build && pnpm --filter @lean-harness/web build && pnpm --filter quickstart dev",
     "build": "pnpm -r build",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p apps/web/tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "new-agent": "node packages/create-lean-harness/index.mjs --workspace --into agents"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

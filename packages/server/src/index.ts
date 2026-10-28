@@ -13,7 +13,19 @@ export type { Authenticate, JwtOptions, User } from './auth.js';
 export { AccountError, Accounts } from './accounts.js';
 export type { Account, AccountOptions, Invite, Role } from './accounts.js';
 
+/** How the app presents itself to its UIs: the web app shows these. */
+export interface AppInfo {
+  /** The assistant's name, e.g. "Support Desk" (default "Lean Harness"). */
+  name: string;
+  /** The line under the greeting on the home screen. */
+  tagline?: string;
+  /** Starter prompts on the home screen. `prompt` is what gets sent (default: the title). */
+  suggestions?: { title: string; detail?: string; prompt?: string; icon?: 'spark' | 'tool' | 'clock' | 'memory' | 'search' | 'doc' }[];
+}
+
 export interface ServerOptions {
+  /** Name, tagline and starter prompts for the UI (`GET /v1/app`, no sign-in needed). */
+  app?: AppInfo;
   /**
    * Who is calling. With it, every session belongs to its creator, people see only
    * their own sessions, and memory follows the user. Without it, the API is single-user.
@@ -104,13 +116,16 @@ function fail(c: Context, error: unknown) {
 export function createServer(harness: Harness, options: ServerOptions = {}) {
   const api = new Hono<Env>();
   const windows = new Map<string, { count: number; reset: number }>();
+  const base = options.basePath ?? '/v1';
+  /** Routes anyone may call: liveness, and how the app presents itself. */
+  const open = new Set([`${base}/health`, `${base}/app`]);
 
   if (options.corsOrigin !== false) {
     api.use('*', cors({ origin: options.corsOrigin ?? '*', allowHeaders: ['Content-Type', 'Authorization'] }));
   }
   api.use('*', async (c, next) => {
     c.set('user', null);
-    if (c.req.method === 'OPTIONS' || c.req.path.endsWith('/health')) return next();
+    if (c.req.method === 'OPTIONS' || open.has(c.req.path)) return next();
     if (options.accounts && crossSite(c)) {
       return c.json({ error: { code: 'forbidden', message: 'Cross-site request refused' } }, 403);
     }
@@ -161,6 +176,8 @@ export function createServer(harness: Harness, options: ServerOptions = {}) {
     });
 
   api.get('/health', (c) => c.json({ ok: true }));
+
+  api.get('/app', (c) => c.json({ name: 'Lean Harness', suggestions: [], ...options.app }));
 
   if (options.accounts) accountRoutes(api, options.accounts);
 
@@ -269,7 +286,7 @@ export function createServer(harness: Harness, options: ServerOptions = {}) {
     return c.json({ results });
   });
 
-  return new Hono().route(options.basePath ?? '/v1', api);
+  return new Hono().route(base, api);
 }
 
 /** Start an HTTP server on Node. */

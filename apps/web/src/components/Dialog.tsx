@@ -1,15 +1,30 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Close } from './Icons';
 
-/** A modal dialog: closes on Escape or a click on the backdrop. */
-export function Dialog({ title, onClose, children, small }: { title?: string; onClose(): void; children: ReactNode; small?: boolean }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+/** Open dialogs, oldest first. */
+const open: object[] = [];
 
-  return (
+/**
+ * A modal dialog: closes on Escape or a click on the backdrop. Rendered at the end of the
+ * page, so a dialog opened from inside another one is not clipped by it.
+ */
+export function Dialog({ title, onClose, children, small }: { title?: string; onClose(): void; children: ReactNode; small?: boolean }) {
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    // Escape closes only the dialog on top.
+    const self = {};
+    open.push(self);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && open.at(-1) === self && close.current();
+    document.addEventListener('keydown', onKey);
+    return () => {
+      open.splice(open.indexOf(self), 1);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, []);
+
+  return createPortal(
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={`dialog ${small ? 'small' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
         {title && (
@@ -22,7 +37,8 @@ export function Dialog({ title, onClose, children, small }: { title?: string; on
         )}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

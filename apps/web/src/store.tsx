@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, isUnauthorized, safeStorage, type SessionSummary } from './lib';
-import { ApiError, type AuthStatus, type ModelInfo, type User } from '@lean-harness/widget/client';
+import { ApiError, type AppInfo, type AuthStatus, type ModelInfo, type User } from '@lean-harness/widget/client';
 
 export type Theme = 'light' | 'dark' | 'system';
 
@@ -12,6 +12,8 @@ export type Theme = 'light' | 'dark' | 'system';
 export type Gate = null | 'setup' | 'login' | 'token';
 
 interface AppState {
+  /** The assistant's name, tagline and starter prompts, from the server. */
+  info: AppInfo;
   /** The signed-in user; null when the server has no sign-in. */
   user: User | null;
   gate: Gate;
@@ -76,6 +78,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [gate, setGate] = useState<Gate>(null);
   const [accounts, setAccounts] = useState(false);
   const [loaded, setLoaded] = useState(0);
+  const [info, setInfo] = useState<AppInfo>({ name: 'Lean Harness', suggestions: [] });
+
+  useEffect(() => {
+    api.appInfo().then(setInfo, () => undefined);
+  }, []);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -104,7 +111,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setHasMemory(t.tools.some((tool) => tool.name === 'remember'));
       void refreshSessions();
     };
-    load().catch((e) => (isUnauthorized(e) ? setGate((g) => g ?? 'token') : setError(`Can't reach the Lean Harness server at ${location.origin}.`)));
+    load().catch((e) => (isUnauthorized(e) ? setGate((g) => g ?? 'token') : setError(`Can't reach the server at ${location.origin}.`)));
   }, [refreshSessions, loaded]);
 
   useEffect(() => {
@@ -124,6 +131,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppState>(
     () => ({
+      info,
       user,
       gate,
       accounts,
@@ -179,7 +187,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       error,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, gate, accounts, models, chosenDefault, serverDefault, hasMemory, sessions, refreshSessions, theme, collapsed, drawer, dialog, error],
+    [info, user, gate, accounts, models, chosenDefault, serverDefault, hasMemory, sessions, refreshSessions, theme, collapsed, drawer, dialog, error],
   );
 
   return (

@@ -81,7 +81,7 @@ function ChatRow({ session, active }: { session: SessionSummary; active: boolean
 }
 
 export function Sidebar() {
-  const { sessions, hasMemory, setDialog, setDrawer, toggleSidebar, user, signOut } = useApp();
+  const { sessions, hasMemory, setDialog, setDrawer, toggleSidebar, user, signOut, info } = useApp();
   const match = useMatch('/c/:id');
 
   return (
@@ -89,7 +89,7 @@ export function Sidebar() {
       <div className="side-top">
         <Link className="brand" to="/" onClick={() => setDrawer(false)}>
           <img src="/logo.svg" alt="" />
-          <span>Lean Harness</span>
+          <span>{info.name}</span>
         </Link>
         <button className="icon-btn" title={`Close sidebar (${mod} B)`} aria-label="Close sidebar" onClick={toggleSidebar}>
           <SidebarIcon />

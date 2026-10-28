@@ -1,0 +1,28 @@
+{
+  "name": "create-lean-harness",
+  "version": "0.1.0",
+  "description": "Start a new Lean Harness assistant for your domain: npm create lean-harness@latest my-agent",
+  "license": "MIT",
+  "author": "Kevin Solomon",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ikevinsolomon/lean-harness.git",
+    "directory": "packages/create-lean-harness"
+  },
+  "homepage": "https://github.com/ikevinsolomon/lean-harness#readme",
+  "bugs": {
+    "url": "https://github.com/ikevinsolomon/lean-harness/issues"
+  },
+  "keywords": ["ai", "agent", "assistant", "create", "starter", "template"],
+  "engines": {
+    "node": ">=22"
+  },
+  "type": "module",
+  "bin": {
+    "create-lean-harness": "index.mjs"
+  },
+  "exports": {
+    ".": "./index.mjs"
+  },
+  "files": ["index.mjs", "template", "README.md"]
+}

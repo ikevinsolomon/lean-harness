@@ -12,10 +12,11 @@ const Credentials = z.object({ email: z.string().max(254), password: z.string().
 const NewAccount = Credentials.extend({ name: z.string().max(100) });
 const PasswordChange = z.object({ current: z.string().max(200), next: z.string().max(200) });
 const NewInvite = z.object({ email: z.string().max(254).optional(), role: z.enum(['admin', 'member']).optional() });
+const NewPassword = z.object({ password: z.string().max(200) });
 const UserChange = z.object({ disabled: z.boolean().optional(), role: z.enum(['admin', 'member']).optional() });
 
 /** Paths anyone may call, signed in or not. */
-export const isPublicAuthPath = (path: string) => /\/auth\/(status|setup|login|logout|invites\/[^/]+(\/accept)?)$/.test(path);
+export const isPublicAuthPath = (path: string) => /\/auth\/(status|setup|login|logout|(invites|resets)\/[^/]+(\/accept)?)$/.test(path);
 
 /** The sign-in token on a request: the session cookie (browsers) or a Bearer token (other clients). */
 export const sessionToken = (c: Context) => getCookie(c, SESSION_COOKIE) ?? bearer(c.req.raw);
@@ -80,6 +81,22 @@ export function accountRoutes(api: Hono<Env>, accounts: Accounts) {
   api.post('/auth/invites/:token/accept', async (c) =>
     signIn(c, await accounts.acceptInvite(c.req.param('token'), NewAccount.parse(await c.req.json()))),
   );
+
+  api.get('/auth/resets/:token', async (c) => {
+    const account = await accounts.resetFor(c.req.param('token'));
+    if (!account) throw new AccountError(404, 'This reset link has expired or was already used');
+    return c.json({ reset: { name: account.name, email: account.email } });
+  });
+
+  api.post('/auth/resets/:token', async (c) =>
+    signIn(c, await accounts.resetPassword(c.req.param('token'), NewPassword.parse(await c.req.json()).password)),
+  );
+
+  // Admin: a one-time link for someone who forgot their password.
+  api.post('/admin/users/:id/reset', async (c) => {
+    admin(c);
+    return c.json(await accounts.createResetLink(c.req.param('id')), 201);
+  });
 
   api.get('/admin/users', async (c) => {
     admin(c);

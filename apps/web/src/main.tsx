@@ -2,7 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router';
 import { App } from './App';
-import { AcceptInvite } from './components/SignIn';
+import { AcceptInvite, ResetPassword } from './components/SignIn';
 import { AppProvider } from './store';
 import './styles.css';
 
@@ -10,6 +10,7 @@ import './styles.css';
 const router = createBrowserRouter([
   { path: '/', element: <App />, children: [{ index: true }, { path: 'c/:id' }] },
   { path: '/invite/:token', element: <AcceptInvite /> },
+  { path: '/reset/:token', element: <ResetPassword /> },
 ]);
 
 createRoot(document.getElementById('root')!).render(

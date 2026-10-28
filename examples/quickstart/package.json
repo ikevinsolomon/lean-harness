@@ -4,15 +4,12 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts"
+    "start": "tsx src/index.ts",
+    "reset-password": "tsx src/index.ts reset-password"
   },
   "dependencies": {
-    "@hono/node-server": "^2.1.5",
+    "@lean-harness/app": "workspace:*",
     "@lean-harness/core": "workspace:*",
-    "@lean-harness/server": "workspace:*",
-    "@lean-harness/widget": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.32.2",
-    "zod": "^4.6.7",
     "pg": "^8.23.1"
   },
   "devDependencies": {

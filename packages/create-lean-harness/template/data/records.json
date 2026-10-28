@@ -1,0 +1,5 @@
+[
+  { "id": "R-1001", "name": "Onboarding for Acme Corp", "status": "In progress", "owner": "Asha", "updated": "2026-10-20" },
+  { "id": "R-1002", "name": "Contract renewal for Globex", "status": "Waiting on customer", "owner": "Ben", "updated": "2026-10-24" },
+  { "id": "R-1003", "name": "Data export for Initech", "status": "Done", "owner": "Asha", "updated": "2026-10-26" }
+]

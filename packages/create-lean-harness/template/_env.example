@@ -1,0 +1,25 @@
+# Copy to .env and add at least one model key. Each key turns its provider on.
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+DEEPSEEK_API_KEY=
+GEMINI_API_KEY=
+OPENROUTER_API_KEY=
+
+# Optional: the model new chats start with, as provider/model.
+DEFAULT_MODEL=
+
+# Optional: give Claude web search and a code sandbox (run by Anthropic, billed per use).
+CLAUDE_WEB_SEARCH=
+CLAUDE_CODE_EXECUTION=
+
+# Sign-in: the first visitor creates the admin account; others join by invite link.
+# AUTH=off turns sign-in off (a single-user app on your own machine).
+AUTH=
+
+# Optional: Postgres instead of the SQLite file in .data/ (also run `npm install pg`).
+DATABASE_URL=
+
+# Optional: the address people use, for links printed by `npm run reset-password`.
+PUBLIC_URL=
+
+PORT=8787

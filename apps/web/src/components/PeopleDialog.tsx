@@ -7,12 +7,34 @@ import { Check, Copy, More, Trash } from './Icons';
 import { Popover } from './Popover';
 
 const inviteUrl = (token: string) => `${location.origin}/invite/${token}`;
+const resetUrl = (token: string) => `${location.origin}/reset/${token}`;
 const days = (iso: string) => Math.max(1, Math.round((Date.parse(iso) - Date.now()) / 86_400_000));
+
+/** A link shown once, with a Copy button. */
+function LinkBox({ link }: { link: string }) {
+  const { toast } = useApp();
+  const [copied, setCopied] = useState(false);
+  useEffect(() => setCopied(false), [link]);
+  const copy = () => navigator.clipboard.writeText(link).then(() => setCopied(true), () => toast('Copy the link by hand'));
+  return (
+    <>
+      <div className="invite-link">
+        <code>{link}</code>
+        <button className="btn" onClick={copy}>
+          {copied ? <Check size={15} /> : <Copy size={15} />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <small>This link is shown only once.</small>
+    </>
+  );
+}
 
 function PersonRow({ person, me, changed }: { person: Account; me: boolean; changed(): void }) {
   const { toast } = useApp();
   const [menu, setMenu] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [reset, setReset] = useState('');
   const close = useCallback(() => setMenu(false), []);
   const act = async (action: () => Promise<unknown>) => {
     setMenu(false);
@@ -42,6 +64,15 @@ function PersonRow({ person, me, changed }: { person: Account; me: boolean; chan
               <button className="menu-item" role="menuitem" onClick={() => act(() => api.updateUser(person.id, { role: person.role === 'admin' ? 'member' : 'admin' }))}>
                 {person.role === 'admin' ? 'Make member' : 'Make admin'}
               </button>
+              <button
+                className="menu-item"
+                role="menuitem"
+                onClick={() =>
+                  act(async () => setReset(resetUrl((await api.createResetLink(person.id)).token)))
+                }
+              >
+                Reset password
+              </button>
               <button className="menu-item" role="menuitem" onClick={() => act(() => api.updateUser(person.id, { disabled: !person.disabled }))}>
                 {person.disabled ? 'Turn on' : 'Turn off (signs them out)'}
               </button>
@@ -52,6 +83,14 @@ function PersonRow({ person, me, changed }: { person: Account; me: boolean; chan
             </Popover>
           )}
         </span>
+      )}
+      {reset && (
+        <Dialog title={`Reset ${person.name}'s password`} onClose={() => setReset('')} small>
+          <div className="dialog-body">
+            <p>Send this link to {person.name}. It lets them set a new password, works once, and expires in 24 hours. Their current sign-ins end when they use it.</p>
+            <LinkBox link={reset} />
+          </div>
+        </Dialog>
       )}
       {removing && (
         <ConfirmDialog
@@ -73,7 +112,6 @@ export function PeopleDialog() {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [email, setEmail] = useState('');
   const [link, setLink] = useState('');
-  const [copied, setCopied] = useState(false);
 
   const load = useCallback(() => {
     api.users().then((r) => setPeople(r.users), () => toast('Could not load people'));
@@ -85,15 +123,11 @@ export function PeopleDialog() {
     try {
       const { token } = await api.createInvite({ email: email.trim() || undefined });
       setLink(inviteUrl(token));
-      setCopied(false);
       setEmail('');
       load();
     } catch (e) {
       toast((e as Error).message);
     }
-  };
-  const copy = async () => {
-    await navigator.clipboard.writeText(link).then(() => setCopied(true), () => toast('Copy the link by hand'));
   };
 
   return (
@@ -114,16 +148,7 @@ export function PeopleDialog() {
               Create invite link
             </button>
           </form>
-          {link && (
-            <div className="invite-link">
-              <code>{link}</code>
-              <button className="btn" onClick={copy}>
-                {copied ? <Check size={15} /> : <Copy size={15} />}
-                {copied ? 'Copied' : 'Copy'}
-              </button>
-            </div>
-          )}
-          {link && <small>This link is shown only once.</small>}
+          {link && <LinkBox link={link} />}
         </div>
         {invites.length > 0 && (
           <div className="setting" style={{ display: 'block' }}>

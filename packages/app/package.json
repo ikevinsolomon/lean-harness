@@ -1,0 +1,66 @@
+{
+  "name": "@lean-harness/app",
+  "version": "0.1.0",
+  "description": "Run a complete Lean Harness assistant from one call: models from .env, accounts, the web app, the widget, memory, knowledge and MCP.",
+  "license": "MIT",
+  "author": "Kevin Solomon",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ikevinsolomon/lean-harness.git",
+    "directory": "packages/app"
+  },
+  "homepage": "https://github.com/ikevinsolomon/lean-harness#readme",
+  "bugs": {
+    "url": "https://github.com/ikevinsolomon/lean-harness/issues"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "assistant",
+    "chat",
+    "llm",
+    "harness"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "web",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-web.mjs"
+  },
+  "dependencies": {
+    "@lean-harness/core": "workspace:*",
+    "@lean-harness/server": "workspace:*",
+    "@lean-harness/widget": "workspace:*"
+  },
+  "peerDependencies": {
+    "pg": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "pg": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
+    "@lean-harness/web": "workspace:*"
+  }
+}

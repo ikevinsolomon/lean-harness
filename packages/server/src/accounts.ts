@@ -113,6 +113,8 @@ export class Accounts {
       await this.db.query(`CREATE TABLE IF NOT EXISTS lh_invites (
         id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE, email TEXT, role TEXT NOT NULL, created_by TEXT NOT NULL,
         created_at TEXT NOT NULL, expires_at TEXT NOT NULL, used_at TEXT)`);
+      await this.db.query(`CREATE TABLE IF NOT EXISTS lh_password_resets (
+        token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)`);
     })();
     await this.ready;
     return this.db.query(sql, params);
@@ -263,6 +265,46 @@ export class Accounts {
     return { account, token: await this.startSession(account.id) };
   }
 
+  /**
+   * A link that lets someone set a new password (shown once, works once, for 24 hours).
+   * The admin makes one from People; a locked-out admin gets one from the command line.
+   */
+  async createResetLink(userId: string) {
+    const [row] = await this.q('SELECT id FROM lh_users WHERE id = ?', [userId]);
+    if (!row) throw new AccountError(404, 'No such account');
+    const t = token();
+    const expiresAt = new Date(Date.now() + DAY).toISOString();
+    await this.q('DELETE FROM lh_password_resets WHERE user_id = ?', [userId]); // only the newest link works
+    await this.q('INSERT INTO lh_password_resets (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)', [hash(t), userId, now(), expiresAt]);
+    return { token: t, expiresAt };
+  }
+
+  /** Whose password a reset link is for, or null if the link is unknown, used or expired. */
+  async resetFor(t: string): Promise<Account | null> {
+    const [row] = await this.q(
+      'SELECT u.*, r.expires_at AS reset_expires FROM lh_password_resets r JOIN lh_users u ON u.id = r.user_id WHERE r.token_hash = ?',
+      [hash(t)],
+    );
+    if (!row || Number(row.disabled) || String(row.reset_expires) < now()) return null;
+    return this.account(row);
+  }
+
+  /** Set a new password with a reset link. Signs out everywhere else and signs in here. */
+  async resetPassword(t: string, next: string) {
+    const account = await this.resetFor(t);
+    if (!account) throw new AccountError(404, 'This reset link has expired or was already used');
+    await this.q('UPDATE lh_users SET password_hash = ? WHERE id = ?', [await hashPassword(password(next)), account.id]);
+    await this.q('DELETE FROM lh_password_resets WHERE user_id = ?', [account.id]);
+    await this.q('DELETE FROM lh_auth_sessions WHERE user_id = ?', [account.id]);
+    this.failures.delete(account.email);
+    return { account, token: await this.startSession(account.id) };
+  }
+
+  async userByEmail(address: string): Promise<Account | null> {
+    const [row] = await this.q('SELECT * FROM lh_users WHERE email = ?', [address.trim().toLowerCase()]);
+    return row ? this.account(row) : null;
+  }
+
   async listUsers(): Promise<Account[]> {
     return (await this.q('SELECT * FROM lh_users ORDER BY created_at')).map((r) => this.account(r));
   }
@@ -307,6 +349,7 @@ export class Accounts {
     const admins = await this.admins();
     if (admins.length === 1 && admins[0] === id) throw new AccountError(400, 'There must always be an admin');
     await this.q('DELETE FROM lh_auth_sessions WHERE user_id = ?', [id]);
+    await this.q('DELETE FROM lh_password_resets WHERE user_id = ?', [id]);
     await this.q('DELETE FROM lh_users WHERE id = ?', [id]);
   }
 }
