@@ -80,6 +80,18 @@ describe('HTTP API', () => {
     expect((await a.request(`/v1/sessions/${session.id}/approvals/nothing`, json({ approved: 'yes' }))).status).toBe(400);
   });
 
+  it('accepts attachments and rejects unsupported ones', async () => {
+    const a = app();
+    const session = await (await a.request('/v1/sessions', json({}))).json();
+    const png = { name: 'a.png', mediaType: 'image/png', data: Buffer.from('x').toString('base64') };
+    const ok = await (await a.request(`/v1/sessions/${session.id}/messages`, json({ content: 'look', stream: false, files: [png] }))).json();
+    expect(ok.text).toContain('Attached: a.png (image/png)');
+    const stored = await (await a.request(`/v1/sessions/${session.id}`)).json();
+    expect(stored.messages[0].parts[0]).toEqual({ type: 'file', ...png });
+    const exe = { name: 'a.exe', mediaType: 'application/x-msdownload', data: 'AAAA' };
+    expect((await a.request(`/v1/sessions/${session.id}/messages`, json({ content: 'x', files: [exe] }))).status).toBe(400);
+  });
+
   it('maps errors to HTTP status codes', async () => {
     const a = app();
     expect((await a.request('/v1/sessions/nope')).status).toBe(404);

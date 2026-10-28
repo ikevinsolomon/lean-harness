@@ -38,12 +38,14 @@ function reply(request: ModelRequest): Part[] {
     ];
   }
 
+  const files = last?.parts.flatMap((p) => (p.type === 'file' ? [`${p.name} (${p.mediaType})`] : [])) ?? [];
+  const attached = files.length ? `\n\nAttached: ${files.join(', ')}.` : '';
   const tools = request.tools.map((t) => `- \`${t.name}\`: ${t.description}`).join('\n') || '- (no tools registered)';
   return [
     {
       type: 'text',
       text:
-        `You said: _${text}_\n\n` +
+        `You said: _${text}_${attached}\n\n` +
         `I'm the **mock model**, so I only echo. Pick a real model above, or call a tool directly ` +
         `by typing \`/tool_name {"arg": "value"}\`.\n\n**Tools available:**\n${tools}`,
     },

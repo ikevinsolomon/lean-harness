@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { BetaMessageStreamParams } from '@anthropic-ai/sdk/resources/beta/messages';
 import type { Message, ModelRequest, Part, Provider, ProviderEvent, StopReason } from '../types.js';
-import { answerOrphanedToolCalls, userText } from './history.js';
+import { answerOrphanedToolCalls, binaryFiles, IMAGE_TYPES, userText } from './history.js';
 
 export interface AnthropicOptions {
   id?: string;
@@ -67,7 +67,14 @@ export function toAnthropicMessages(messages: Message[], providerId = 'anthropic
       );
       push('user', results);
     } else {
-      push('user', [{ type: 'text', text: userText(message.parts) }]);
+      const files: Anthropic.ContentBlockParam[] = binaryFiles(message.parts).map((f) =>
+        IMAGE_TYPES.has(f.mediaType)
+          ? { type: 'image', source: { type: 'base64', media_type: f.mediaType as 'image/png', data: f.data } }
+          : f.mediaType === 'application/pdf'
+            ? { type: 'document', title: f.name, source: { type: 'base64', media_type: 'application/pdf', data: f.data } }
+            : { type: 'text', text: `[Attached ${f.name} (${f.mediaType}), which this model cannot read.]` },
+      );
+      push('user', [...files, { type: 'text', text: userText(message.parts) }]);
     }
   }
   return out;

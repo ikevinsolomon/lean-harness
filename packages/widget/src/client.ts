@@ -10,6 +10,7 @@ export interface ModelInfo {
 export type Part =
   | { type: 'text'; text: string }
   | { type: 'context'; label: string; text: string }
+  | { type: 'file'; name: string; mediaType: string; data: string }
   | { type: 'reasoning'; text: string }
   | { type: 'tool_call'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; toolCallId: string; name: string; output: string; isError?: boolean };
@@ -186,12 +187,18 @@ export class HarnessClient {
   async *send(
     sessionId: string,
     content: string,
-    options: { context?: Record<string, unknown>; replaceFrom?: string; model?: string; signal?: AbortSignal } = {},
+    options: {
+      context?: Record<string, unknown>;
+      replaceFrom?: string;
+      model?: string;
+      files?: { name: string; mediaType: string; data: string }[];
+      signal?: AbortSignal;
+    } = {},
   ): AsyncGenerator<ChatEvent> {
     const response = await fetch(this.url(`/sessions/${encodeURIComponent(sessionId)}/messages`), {
       method: 'POST',
       headers: this.headers({ Accept: 'text/event-stream' }),
-      body: JSON.stringify({ content, context: options.context, replaceFrom: options.replaceFrom, model: options.model }),
+      body: JSON.stringify({ content, context: options.context, replaceFrom: options.replaceFrom, model: options.model, files: options.files }),
       signal: options.signal,
     });
     if (!response.ok || !response.body) throw await this.error(response);

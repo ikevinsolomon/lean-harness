@@ -1006,6 +1006,75 @@ a {
 .composer:focus-within {
   border-color: color-mix(in srgb, var(--ink) 28%, var(--border));
 }
+.composer.dragging {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--tint);
+}
+.attachments,
+.sent-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sent-files {
+  justify-content: flex-end;
+}
+.sent-files img {
+  display: block;
+  max-width: 220px;
+  max-height: 180px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  object-fit: cover;
+}
+.attachment {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 220px;
+  padding: 6px 10px 6px 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 13px;
+}
+.attachment img,
+.attachment .file-tile {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+.attachment .file-tile {
+  display: grid;
+  place-items: center;
+  background: var(--tint);
+  color: var(--accent);
+}
+.attachment .file-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.attachment .remove {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+}
+.composer .attach {
+  color: var(--muted);
+}
 .composer textarea {
   border: 0;
   outline: 0;

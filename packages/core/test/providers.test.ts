@@ -85,3 +85,41 @@ describe('Chat Completions conversion', () => {
     ]);
   });
 });
+
+describe('attachments', () => {
+  const png = Buffer.from('fake-png').toString('base64');
+  const pdf = Buffer.from('%PDF-1.4').toString('base64');
+  const notes = Buffer.from('line one\nline two').toString('base64');
+  const message: Message = {
+    id: 'u',
+    role: 'user',
+    createdAt: at,
+    parts: [
+      { type: 'file', name: 'photo.png', mediaType: 'image/png', data: png },
+      { type: 'file', name: 'report.pdf', mediaType: 'application/pdf', data: pdf },
+      { type: 'file', name: 'notes.md', mediaType: 'text/markdown', data: notes },
+      { type: 'text', text: 'What is in these?' },
+    ],
+  };
+
+  it('sends images and PDFs to Claude as blocks, and text files as text', () => {
+    const [user] = toAnthropicMessages([message]);
+    expect(user!.content).toEqual([
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: png } },
+      { type: 'document', title: 'report.pdf', source: { type: 'base64', media_type: 'application/pdf', data: pdf } },
+      { type: 'text', text: '<file name="notes.md">\nline one\nline two\n</file>\n\nWhat is in these?' },
+    ]);
+  });
+
+  it('sends images as data URLs and PDFs as files to OpenAI-style providers', () => {
+    const [, user] = toChatMessages('sys', [message]);
+    expect(user).toEqual({
+      role: 'user',
+      content: [
+        { type: 'image_url', image_url: { url: `data:image/png;base64,${png}` } },
+        { type: 'file', file: { filename: 'report.pdf', file_data: `data:application/pdf;base64,${pdf}` } },
+        { type: 'text', text: '<file name="notes.md">\nline one\nline two\n</file>\n\nWhat is in these?' },
+      ],
+    });
+  });
+});

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import type { ChatEvent, Session } from '@lean-harness/widget/client';
 import { api, greeting, mod, textOf, type Message } from '../lib';
 import { useApp } from '../store';
-import { Composer } from './Composer';
+import { Composer, type Attachment } from './Composer';
 import { Alert, Clock, Close, Down, Menu, NewChat, Sidebar as SidebarIcon, Spark, Wrench, Brain } from './Icons';
 import { AssistantTurn, buildTurns, resultsOf, UserTurn, type Live, type Results } from './Messages';
 import { ModelMenu } from './ModelMenu';
@@ -160,7 +160,7 @@ export function ChatView({ id }: { id?: string }) {
     }
   }
 
-  const send = async (text: string, replaceFrom?: string) => {
+  const send = async (text: string, replaceFrom?: string, files: Attachment[] = []) => {
     if (busy) return;
     let current = session;
     try {
@@ -174,10 +174,14 @@ export function ChatView({ id }: { id?: string }) {
       return;
     }
     const keep = replaceFrom ? current.messages.findIndex((m) => m.id === replaceFrom) : -1;
-    const pending: Message = { id: 'pending', role: 'user', parts: [{ type: 'text', text }] };
+    const pending: Message = {
+      id: 'pending',
+      role: 'user',
+      parts: [...files.map((f) => ({ type: 'file' as const, ...f })), { type: 'text', text }],
+    };
     setSession({ ...current, messages: [...(keep >= 0 ? current.messages.slice(0, keep) : current.messages), pending] });
     const sid = current.id;
-    await consume(sid, (signal) => api.send(sid, text, { replaceFrom, signal }));
+    await consume(sid, (signal) => api.send(sid, text, { replaceFrom, files, signal }));
   };
 
   // Replies run on the server, so stopping is a request; closing the stream alone would not stop it.
@@ -268,7 +272,7 @@ export function ChatView({ id }: { id?: string }) {
             </div>
             {banner}
             <div className="composer-wrap">
-              <Composer busy={busy} placeholder="Ask Lean Harness anything…" onSend={(t) => send(t)} onStop={stop} autoFocus />
+              <Composer busy={busy} placeholder="Ask Lean Harness anything…" onSend={(t, files) => send(t, undefined, files)} onStop={stop} autoFocus />
             </div>
             <div className="cards">
               {SUGGESTIONS.map(({ title, detail, icon: Icon }) => (
@@ -324,7 +328,7 @@ export function ChatView({ id }: { id?: string }) {
           </button>
         )}
         {banner}
-        <Composer busy={busy} placeholder="Reply to Lean Harness…" onSend={(t) => send(t)} onStop={stop} autoFocus />
+        <Composer busy={busy} placeholder="Reply to Lean Harness…" onSend={(t, files) => send(t, undefined, files)} onStop={stop} autoFocus />
         <p className="disclaimer">Lean Harness can make mistakes. Check important information.</p>
       </div>
     </main>

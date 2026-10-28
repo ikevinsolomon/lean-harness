@@ -37,6 +37,16 @@ const CreateSession = z.object({
 
 const UpdateSession = CreateSession.partial();
 
+const MB = 1024 * 1024;
+const FILE_TYPES = /^(image\/(png|jpeg|gif|webp)|application\/(pdf|json|xml|yaml|x-yaml)|text\/[\w.+-]+)$/;
+
+const File = z.object({
+  name: z.string().min(1).max(200),
+  mediaType: z.string().regex(FILE_TYPES, 'Attach images (PNG, JPEG, GIF, WebP), PDFs or text files'),
+  /** Base64 content, at most 10 MB of file. */
+  data: z.string().max(Math.ceil((10 * MB * 4) / 3) + 4, 'Each file can be at most 10 MB'),
+});
+
 const SendMessage = z.object({
   content: z.string().min(1).max(200_000),
   /** Use a different model for this turn only. */
@@ -45,6 +55,12 @@ const SendMessage = z.object({
   stream: z.boolean().optional(),
   /** Retry or edit: replace this user message (and everything after it) with the new one. */
   replaceFrom: z.string().optional(),
+  /** Files attached to this message: images, PDFs and text files. */
+  files: z
+    .array(File)
+    .max(10, 'Attach at most 10 files')
+    .refine((f) => f.reduce((n, x) => n + x.data.length, 0) <= Math.ceil((20 * MB * 4) / 3), 'Attachments can be at most 20 MB together')
+    .optional(),
   /** Context for this message, shown to the model as labelled blocks: `{ "Page": "Pricing" }`. */
   context: z
     .record(z.string().max(100), z.unknown())
@@ -196,7 +212,8 @@ export function createServer(harness: Harness, options: ServerOptions = {}) {
     const body = SendMessage.parse(await c.req.json());
     const session = await owned(c);
     if (limited(c)) return c.json({ error: { code: 'rate_limited', message: 'Too many messages. Try again shortly.' } }, 429);
-    const run = { model: body.model, context: body.context, replaceFrom: body.replaceFrom };
+    const files = body.files?.map((f) => ({ type: 'file' as const, ...f }));
+    const run = { model: body.model, context: body.context, replaceFrom: body.replaceFrom, files };
 
     if (body.stream === false) {
       return c.json(await harness.send(session.id, body.content, { ...run, signal: c.req.raw.signal }));

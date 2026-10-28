@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { Message, ModelRequest, Part, Provider, ProviderEvent, StopReason } from '../types.js';
-import { answerOrphanedToolCalls, userText } from './history.js';
+import { answerOrphanedToolCalls, binaryFiles, IMAGE_TYPES, userText } from './history.js';
 
 export interface OpenAICompatibleOptions {
   /** The prefix in `provider/model`. */
@@ -22,7 +22,17 @@ export function toChatMessages(system: string, messages: Message[]): ChatMessage
   for (const message of answerOrphanedToolCalls(messages)) {
     const text = message.parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('\n');
     if (message.role === 'user') {
-      out.push({ role: 'user', content: userText(message.parts) });
+      const files = binaryFiles(message.parts);
+      if (!files.length) {
+        out.push({ role: 'user', content: userText(message.parts) });
+        continue;
+      }
+      const content: OpenAI.Chat.ChatCompletionContentPart[] = files.map((f) =>
+        IMAGE_TYPES.has(f.mediaType)
+          ? { type: 'image_url', image_url: { url: `data:${f.mediaType};base64,${f.data}` } }
+          : { type: 'file', file: { filename: f.name, file_data: `data:${f.mediaType};base64,${f.data}` } },
+      );
+      out.push({ role: 'user', content: [...content, { type: 'text', text: userText(message.parts) }] });
     } else if (message.role === 'assistant') {
       const calls = message.parts.flatMap((p) =>
         p.type === 'tool_call'

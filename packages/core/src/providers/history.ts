@@ -1,11 +1,30 @@
-import type { Message, Part, ToolCallPart, ToolResultPart } from '../types.js';
+import type { FilePart, Message, Part, ToolCallPart, ToolResultPart } from '../types.js';
 
-/** A user message as text: attached context first, each in a labelled tag, then what the user wrote. */
+export const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
+/** Files the model reads as text (code, notes, CSV, JSON...), whatever the provider. */
+export function isTextFile(file: FilePart) {
+  return file.mediaType.startsWith('text/') || ['application/json', 'application/xml', 'application/x-yaml', 'application/yaml'].includes(file.mediaType);
+}
+
+/**
+ * A user message as text: attached context and text files first, each in a labelled
+ * tag, then what the user wrote. Images and PDFs are sent as their own blocks by each provider.
+ */
 export function userText(parts: Part[]): string {
   const label = (l: string) => l.replace(/["\n<>]/g, ' ');
-  const context = parts.flatMap((p) => (p.type === 'context' ? [`<context label="${label(p.label)}">\n${p.text}\n</context>`] : []));
+  const blocks = parts.flatMap((p) => {
+    if (p.type === 'context') return [`<context label="${label(p.label)}">\n${p.text}\n</context>`];
+    if (p.type === 'file' && isTextFile(p)) return [`<file name="${label(p.name)}">\n${Buffer.from(p.data, 'base64').toString('utf8')}\n</file>`];
+    return [];
+  });
   const text = parts.flatMap((p) => (p.type === 'text' ? [p.text] : []));
-  return [...context, text.join('\n')].join('\n\n');
+  return [...blocks, text.join('\n')].join('\n\n');
+}
+
+/** Attached images and PDFs: the files a provider has to send as their own content blocks. */
+export function binaryFiles(parts: Part[]): FilePart[] {
+  return parts.filter((p): p is FilePart => p.type === 'file' && !isTextFile(p));
 }
 
 /**

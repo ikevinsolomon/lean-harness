@@ -1,7 +1,7 @@
 import { memo, useState, type MouseEvent } from 'react';
 import { pretty, renderMarkdown, summarize, textOf, type Message } from '../lib';
 import { useApp } from '../store';
-import { Bang, Brain, Check, Chevron, Copy, Edit, Retry, Right, Shield, Tick } from './Icons';
+import { Bang, Brain, Check, Chevron, Copy, Edit, FileIcon, Retry, Right, Shield, Tick } from './Icons';
 
 export type Turn = { kind: 'user'; message: Message } | { kind: 'assistant'; messages: Message[] };
 export type Results = Map<string, { output: string; isError?: boolean }>;
@@ -153,6 +153,7 @@ export function UserTurn({ message, busy, onEdit }: { message: Message; busy: bo
   const [editing, setEditing] = useState(false);
   const text = textOf(message.parts);
   const context = message.parts.flatMap((p) => (p.type === 'context' ? [p.label] : []));
+  const files = message.parts.flatMap((p) => (p.type === 'file' ? [p] : []));
   const { copied, copy } = useCopy();
 
   if (editing) {
@@ -192,6 +193,24 @@ export function UserTurn({ message, busy, onEdit }: { message: Message; busy: bo
   return (
     <div className="user-turn">
       {context.length > 0 && <span className="tool-sum">With {context.join(', ')}</span>}
+      {files.length > 0 && (
+        <div className="sent-files">
+          {files.map((f, i) =>
+            f.mediaType.startsWith('image/') ? (
+              <a key={i} href={`data:${f.mediaType};base64,${f.data}`} target="_blank" rel="noreferrer" title={f.name}>
+                <img src={`data:${f.mediaType};base64,${f.data}`} alt={f.name} />
+              </a>
+            ) : (
+              <span key={i} className="attachment">
+                <span className="file-tile">
+                  <FileIcon size={16} />
+                </span>
+                <span className="file-name">{f.name}</span>
+              </span>
+            ),
+          )}
+        </div>
+      )}
       <div className="bubble">{text}</div>
       <div className="actions">
         <button className="icon-btn small" title="Copy" aria-label="Copy message" onClick={() => copy(text)}>
