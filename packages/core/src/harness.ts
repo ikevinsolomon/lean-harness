@@ -39,6 +39,11 @@ export interface RunOptions {
    * Each entry becomes a labelled block the model reads before the message (objects as JSON).
    */
   context?: Record<string, unknown>;
+  /**
+   * Retry or edit: the id of an earlier user message. It and everything after it
+   * are removed before this turn, so the new message takes its place.
+   */
+  replaceFrom?: string;
 }
 
 function contextParts(context: Record<string, unknown> = {}): Part[] {
@@ -168,7 +173,15 @@ export class Harness {
     const { model } = parseModelId(modelId);
     const provider = this.requireProvider(modelId);
     if (this.running.has(sessionId)) throw new HarnessError('busy', 'This session is already running a turn');
+    let cut = -1;
+    if (options.replaceFrom) {
+      cut = session.messages.findIndex((m) => m.id === options.replaceFrom);
+      if (cut < 0 || session.messages[cut]!.role !== 'user') {
+        throw new HarnessError('bad_request', 'replaceFrom must be the id of a user message in this session');
+      }
+    }
     this.running.add(sessionId);
+    if (cut >= 0) session = await this.store.truncate(sessionId, cut);
 
     const signal = options.signal ?? new AbortController().signal;
     const context = (): HookContext => ({ session, model: modelId });

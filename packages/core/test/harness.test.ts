@@ -131,6 +131,28 @@ describe('harness loop', () => {
     await expect(collect(harness.run(session.id, 'again'))).resolves.toBeDefined();
   });
 
+  it('replaces a user message and everything after it (retry and edit)', async () => {
+    const { provider, requests } = scripted([[text('first answer')], [text('second answer')], [text('edited answer')]]);
+    const harness = createHarness({ providers: [provider], defaultModel: 'test/model-a' });
+    const session = await harness.createSession();
+    await harness.send(session.id, 'one');
+    await harness.send(session.id, 'two');
+    const second = (await harness.getSession(session.id)).messages[2]!;
+
+    const result = await harness.send(session.id, 'two, edited', { replaceFrom: second.id });
+    expect(result.text).toBe('edited answer');
+    const stored = await harness.getSession(session.id);
+    expect(stored.messages.map((m) => m.parts.map((p) => (p.type === 'text' ? p.text : '')).join(''))).toEqual([
+      'one',
+      'first answer',
+      'two, edited',
+      'edited answer',
+    ]);
+    // The model saw the conversation without the replaced turn.
+    expect(requests[2]!.messages).toHaveLength(3);
+    await expect(harness.run(session.id, 'x', { replaceFrom: stored.messages[1]!.id }).next()).rejects.toMatchObject({ code: 'bad_request' });
+  });
+
   it('lists models from every provider', async () => {
     const harness = createHarness({ providers: [scripted([]).provider, mock()], defaultModel: 'mock/echo' });
     expect((await harness.listModels()).map((m) => m.id)).toEqual(['test/model-a', 'test/model-b', 'mock/echo']);

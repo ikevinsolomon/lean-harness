@@ -7,8 +7,9 @@ export type SessionSummary = Omit<Session, 'messages'> & { messageCount: number 
 export type SessionPatch = Partial<Pick<Session, 'title' | 'model' | 'metadata'>>;
 
 /**
- * Where sessions live. Messages are append-only: the harness never edits history,
- * which keeps every model request reproducible and keeps provider caches valid.
+ * Where sessions live. Messages are never edited: history only grows, or is cut
+ * back to an earlier point (retry, edit). Every earlier turn stays byte-for-byte
+ * the same, which keeps model requests reproducible and provider caches valid.
  */
 export interface SessionStore {
   create(session: Session): Promise<Session>;
@@ -16,6 +17,8 @@ export interface SessionStore {
   list(): Promise<SessionSummary[]>;
   update(id: string, patch: SessionPatch): Promise<Session>;
   append(id: string, messages: Message[]): Promise<Session>;
+  /** Keep the first `count` messages and drop the rest. */
+  truncate(id: string, count: number): Promise<Session>;
   delete(id: string): Promise<boolean>;
 }
 
@@ -57,6 +60,13 @@ export class MemoryStore implements SessionStore {
   async append(id: string, messages: Message[]) {
     const session = this.require(id);
     session.messages.push(...structuredClone(messages));
+    session.updatedAt = now();
+    return structuredClone(session);
+  }
+
+  async truncate(id: string, count: number) {
+    const session = this.require(id);
+    session.messages.length = Math.min(count, session.messages.length);
     session.updatedAt = now();
     return structuredClone(session);
   }
@@ -114,6 +124,14 @@ export class FileStore implements SessionStore {
   async append(id: string, messages: Message[]) {
     const session = await this.require(id);
     session.messages.push(...messages);
+    session.updatedAt = now();
+    await this.write(session);
+    return session;
+  }
+
+  async truncate(id: string, count: number) {
+    const session = await this.require(id);
+    session.messages.length = Math.min(count, session.messages.length);
     session.updatedAt = now();
     await this.write(session);
     return session;

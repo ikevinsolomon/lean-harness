@@ -30,6 +30,8 @@ const SendMessage = z.object({
   model: z.string().optional(),
   /** Stream Server-Sent Events (default) or return one JSON result. */
   stream: z.boolean().optional(),
+  /** Retry or edit: replace this user message (and everything after it) with the new one. */
+  replaceFrom: z.string().optional(),
   /** Context for this message, shown to the model as labelled blocks: `{ "Page": "Pricing" }`. */
   context: z
     .record(z.string().max(100), z.unknown())
@@ -103,12 +105,12 @@ export function createServer(harness: Harness, options: ServerOptions = {}) {
 
     if (body.stream === false) {
       return c.json(
-        await harness.send(id, body.content, { model: body.model, context: body.context, signal: c.req.raw.signal }),
+        await harness.send(id, body.content, { model: body.model, context: body.context, replaceFrom: body.replaceFrom, signal: c.req.raw.signal }),
       );
     }
 
     const abort = new AbortController();
-    const events = harness.run(id, body.content, { model: body.model, context: body.context, signal: abort.signal });
+    const events = harness.run(id, body.content, { model: body.model, context: body.context, replaceFrom: body.replaceFrom, signal: abort.signal });
     // Pull the first event before streaming, so "not found" or "busy" become normal HTTP errors.
     const first = await events.next();
     return streamSSE(c, async (stream) => {
