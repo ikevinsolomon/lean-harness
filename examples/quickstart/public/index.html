@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>lean-harness quickstart</title>
+    <script type="module" src="/lean-chat.js"></script>
+    <style>
+      :root {
+        --bg: #f4f4f8;
+        --text: #17171c;
+        --muted: #6b6b78;
+        --card: #ffffff;
+        --border: #e4e4ea;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0b0b0e;
+          --text: #ececf1;
+          --muted: #9a9aa8;
+          --card: #121216;
+          --border: #2c2c35;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      }
+      main {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 48px 16px;
+        display: grid;
+        grid-template-columns: 1fr 1.15fr;
+        gap: 40px;
+        align-items: start;
+      }
+      @media (max-width: 860px) { main { grid-template-columns: 1fr; padding-top: 28px; } }
+      h1 { font-size: 34px; letter-spacing: -0.03em; line-height: 1.15; margin: 8px 0 12px; }
+      .tag {
+        display: inline-block;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #6d5efc;
+      }
+      p { color: var(--muted); margin: 0 0 16px; }
+      code, pre { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 13px; }
+      pre {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px 16px;
+        overflow-x: auto;
+        color: var(--text);
+      }
+      ul { color: var(--muted); padding-left: 20px; }
+      lean-chat { height: min(720px, calc(100vh - 96px)); box-shadow: 0 24px 64px -24px rgb(23 23 40 / 0.25); border-radius: 18px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section>
+        <span class="tag">lean-harness · quickstart</span>
+        <h1>An agent you can drop into any page.</h1>
+        <p>
+          This is the example <b>Taskmate</b> domain: one plugin with three task tools and one with a clock.
+          Switch models from the menu at any time, even mid-conversation.
+        </p>
+        <p>Embed the same chat anywhere with two lines:</p>
+        <pre>&lt;script type="module" src="https://your-server/lean-chat.js"&gt;&lt;/script&gt;
+&lt;lean-chat endpoint="https://your-server"&gt;&lt;/lean-chat&gt;</pre>
+        <p>No API key yet? The <b>Mock</b> model works offline. Try a tool directly:</p>
+        <ul>
+          <li><code>/add_task {"title": "Ship v0.1", "priority": "high"}</code></li>
+          <li><code>/list_tasks</code></li>
+          <li><code>/current_time {"timeZone": "Asia/Kolkata"}</code></li>
+        </ul>
+      </section>
+      <lean-chat
+        heading="Taskmate"
+        subtitle="Your tasks, organised"
+        greeting="What should we get done today?"
+        suggestions="What's on my list? | Add a task to review the Q3 deck by Friday | What time is it in Tokyo?"
+      ></lean-chat>
+    </main>
+  </body>
+</html>

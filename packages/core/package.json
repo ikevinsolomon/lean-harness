@@ -1,0 +1,27 @@
+{
+  "name": "@lean-harness/core",
+  "version": "0.1.0",
+  "description": "A small, provider-neutral agent harness: the loop, tools, plugins, model adapters and sessions.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
+    "openai": "^7.45.1",
+    "zod": "^4.6.7"
+  }
+}

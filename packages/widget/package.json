@@ -1,0 +1,31 @@
+{
+  "name": "@lean-harness/widget",
+  "version": "0.1.0",
+  "description": "<lean-chat>: a drop-in chat web component for any lean-harness server. Works in any page or framework.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/lean-chat.ts",
+    "./dist/lean-chat.js": "./dist/lean-chat.js"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/types/lean-chat.d.ts",
+        "default": "./dist/lean-chat.js"
+      }
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.17",
+    "lit": "^3.3.3",
+    "marked": "^18.1.2"
+  },
+  "devDependencies": {
+    "vite": "^8.3.5"
+  }
+}

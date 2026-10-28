@@ -1,0 +1,28 @@
+{
+  "name": "@lean-harness/server",
+  "version": "0.1.0",
+  "description": "HTTP + Server-Sent Events API for a lean-harness agent, so any UI can drive it.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.5",
+    "@lean-harness/core": "workspace:*",
+    "hono": "^4.13.14",
+    "zod": "^4.6.7"
+  }
+}
