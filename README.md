@@ -6,7 +6,7 @@
 - **Everything is a plugin.** A domain (support desk, analytics, travel, ...) is a plugin: instructions, tools and hooks. Model providers are plugins too.
 - **API-first.** A plain HTTP + Server-Sent Events API, so you can build any UI on top: web, mobile, Slack, CLI.
 - **A UI you can embed anywhere.** `<lean-chat>` is a web component: two lines of HTML, any framework, light and dark, themeable.
-- **Small enough to read in an afternoon.** The core is about 1,100 lines with comments. No framework to learn.
+- **Small enough to read in an afternoon.** The core is about 1,500 lines with comments, built-in plugins included. No framework to learn.
 
 ```
 ┌──────────── your UI ─────────────┐     ┌──────────────── lean-harness ────────────────┐
@@ -79,13 +79,33 @@ const { text } = await harness.send(session.id, 'And tomorrow?', { model: 'ollam
 | `endpoint` | same origin | Base URL of a lean-harness server |
 | `token` | | Sent as `Authorization: Bearer …` |
 | `model` | server default | Starting `provider/model` |
-| `heading`, `subtitle`, `greeting`, `placeholder` | | Text |
-| `suggestions` | | Starter prompts, separated by `\|` |
-| `mode` | `inline` | `inline` fills its container; `floating` is a launcher bubble in the corner |
+| `heading`, `subtitle`, `greeting`, `placeholder`, `disclaimer` | | Text |
+| `suggestions` | | Starter cards: `Title: detail \| Title: detail` |
+| `page-context` | off | Attach the current page (title and URL) to every message |
+| `mode` | `inline` | `inline` fills its container; `floating` is a launcher button in the corner |
 | `theme` | `auto` | `auto`, `light` or `dark` |
 | `hide-model-picker`, `hide-reasoning` | | Booleans |
 
-Theme it with CSS variables: `lean-chat { --lc-accent: #0ea5e9; --lc-radius: 12px; --lc-font: Inter, sans-serif; }`. It emits `lean-chat-event` for every streamed event and `lean-chat-error` on errors. `HarnessClient` is exported from the same file if you want the API client without the UI.
+Send your app's context with every message through the `context` property; each entry shows as a chip the user can remove:
+
+```js
+document.querySelector('lean-chat').context = { Order: 'A-4411, shipped 2 Nov', Customer: { plan: 'Pro' } };
+```
+
+Theme it with CSS variables: `lean-chat { --lc-accent: #0f766e; --lc-radius: 14px; --lc-font: Inter, sans-serif; }` (also `--lc-bg`, `--lc-panel`, `--lc-ink`, `--lc-muted`, `--lc-border`, `--lc-bubble`). It looks best with Inter and JetBrains Mono loaded on the page and falls back to system fonts. It emits `lean-chat-event` for every streamed event and `lean-chat-error` on errors. `HarnessClient` is exported from the same file if you want the API client without the UI.
+
+## Memory and context
+
+| | What | How |
+|---|---|---|
+| Conversation history | Every message in a session, sent back each turn | Built in (`SessionStore`) |
+| Long-term memory | Facts and preferences that outlast a conversation, per user | `memoryPlugin({ backend: new FileMemory('memory.json') })`: tools `remember`, `forget`, `recall`; memories are added to the instructions. Users are told apart by `metadata.userId` on the session. |
+| History window | Send only the last N messages to small-context models | `historyWindow({ maxMessages: 40 })` |
+| Per-message context | What the user is looking at: page, record, role | `context` in the API or `harness.run(id, text, { context })`; the model sees labelled `<context>` blocks |
+| Knowledge base | Documents the model can search | `knowledgePlugin({ dir: './docs' })`: tool `search_knowledge`, keyword search by default, or pass `search` for a vector store |
+| Dynamic instructions | Anything computed per request | A plugin's `instructions` function, or the `beforeModel` hook |
+
+`MemoryBackend` has four methods (`list`, `add`, `remove`, optional `search`), so a database or vector-store backend is a small class.
 
 ## Concepts
 
@@ -119,7 +139,7 @@ All routes are under `/v1`. Set `apiKey` (or an `authorize` function) in `create
 | `GET` | `/sessions/:id` | Session with all messages |
 | `PATCH` | `/sessions/:id` | `{ model?, title?, metadata? }`; switch the model here |
 | `DELETE` | `/sessions/:id` | |
-| `POST` | `/sessions/:id/messages` | `{ content, model?, stream? }` → event stream, or JSON when `stream: false` |
+| `POST` | `/sessions/:id/messages` | `{ content, model?, context?, stream? }` → event stream, or JSON when `stream: false` |
 
 A turn streams as Server-Sent Events, one per event:
 

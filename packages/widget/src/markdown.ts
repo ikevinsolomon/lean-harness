@@ -10,7 +10,8 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
 });
 
-/** Model output is untrusted: render Markdown, then sanitize the HTML. */
+/** Model output is untrusted: render Markdown, then sanitize the HTML. Tables get a scrolling frame. */
 export function renderMarkdown(text: string): string {
-  return DOMPurify.sanitize(marked.parse(text) as string, { USE_PROFILES: { html: true } });
+  const html = (marked.parse(text) as string).replace(/<table>/g, '<div class="table"><table>').replace(/<\/table>/g, '</table></div>');
+  return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
 }

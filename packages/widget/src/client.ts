@@ -9,6 +9,7 @@ export interface ModelInfo {
 
 export type Part =
   | { type: 'text'; text: string }
+  | { type: 'context'; label: string; text: string }
   | { type: 'reasoning'; text: string }
   | { type: 'tool_call'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; toolCallId: string; name: string; output: string; isError?: boolean };
@@ -90,13 +91,21 @@ export class HarnessClient {
     return this.request<Session>(`/sessions/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ model }) });
   }
 
-  /** Send a message and receive the turn as a stream of events. */
-  async *send(sessionId: string, content: string, signal?: AbortSignal): AsyncGenerator<ChatEvent> {
+  tools() {
+    return this.request<{ tools: { name: string; description: string }[] }>('/tools');
+  }
+
+  /** Send a message (with optional context) and receive the turn as a stream of events. */
+  async *send(
+    sessionId: string,
+    content: string,
+    options: { context?: Record<string, unknown>; signal?: AbortSignal } = {},
+  ): AsyncGenerator<ChatEvent> {
     const response = await fetch(this.url(`/sessions/${encodeURIComponent(sessionId)}/messages`), {
       method: 'POST',
       headers: this.headers({ Accept: 'text/event-stream' }),
-      body: JSON.stringify({ content }),
-      signal,
+      body: JSON.stringify({ content, context: options.context }),
+      signal: options.signal,
     });
     if (!response.ok || !response.body) throw await this.error(response);
 
