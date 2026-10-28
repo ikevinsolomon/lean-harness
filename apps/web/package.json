@@ -13,6 +13,7 @@
   "dependencies": {
     "@lean-harness/widget": "workspace:*",
     "dompurify": "^3.4.17",
+    "highlight.js": "^11.12.0",
     "marked": "^18.1.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

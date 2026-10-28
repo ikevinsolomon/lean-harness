@@ -1,5 +1,20 @@
 import { ApiError, HarnessClient, type Message, type Part, type SessionSummary } from '@lean-harness/widget/client';
 import DOMPurify from 'dompurify';
+import hljs from 'highlight.js/lib/core';
+import bash from 'highlight.js/lib/languages/bash';
+import css from 'highlight.js/lib/languages/css';
+import diff from 'highlight.js/lib/languages/diff';
+import go from 'highlight.js/lib/languages/go';
+import java from 'highlight.js/lib/languages/java';
+import javascript from 'highlight.js/lib/languages/javascript';
+import json from 'highlight.js/lib/languages/json';
+import markdown from 'highlight.js/lib/languages/markdown';
+import python from 'highlight.js/lib/languages/python';
+import rust from 'highlight.js/lib/languages/rust';
+import sql from 'highlight.js/lib/languages/sql';
+import typescript from 'highlight.js/lib/languages/typescript';
+import xml from 'highlight.js/lib/languages/xml';
+import yaml from 'highlight.js/lib/languages/yaml';
 import { Marked } from 'marked';
 
 export function safeStorage<T>(fn: () => T): T | undefined {
@@ -23,7 +38,31 @@ export const PROVIDER_COLORS: Record<string, string> = {
   mock: '#a1a1aa',
 };
 
-const marked = new Marked({ gfm: true, breaks: true, async: false });
+// Common languages only, to keep the app small. Others render as plain text.
+const LANGUAGES = { bash, css, diff, go, java, javascript, json, markdown, python, rust, sql, typescript, xml, yaml };
+for (const [name, language] of Object.entries(LANGUAGES)) hljs.registerLanguage(name, language);
+hljs.registerAliases(['ts', 'tsx'], { languageName: 'typescript' });
+hljs.registerAliases(['js', 'jsx', 'mjs'], { languageName: 'javascript' });
+hljs.registerAliases(['sh', 'shell', 'zsh', 'console'], { languageName: 'bash' });
+hljs.registerAliases(['html', 'svg'], { languageName: 'xml' });
+hljs.registerAliases(['py'], { languageName: 'python' });
+hljs.registerAliases(['yml'], { languageName: 'yaml' });
+hljs.registerAliases(['md'], { languageName: 'markdown' });
+
+const escape = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+
+const marked = new Marked({
+  gfm: true,
+  breaks: true,
+  async: false,
+  renderer: {
+    code({ text, lang }) {
+      const language = (lang ?? '').trim().split(/\s+/)[0]!.toLowerCase();
+      const body = language && hljs.getLanguage(language) ? hljs.highlight(text, { language, ignoreIllegals: true }).value : escape(text);
+      return `<pre><code class="language-${escape(language || 'text')} hljs">${body}</code></pre>`;
+    },
+  },
+});
 
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') {
@@ -39,8 +78,8 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
 export function renderMarkdown(text: string): string {
   const clean = DOMPurify.sanitize(marked.parse(text) as string, { USE_PROFILES: { html: true } });
   return clean
-    .replace(/<pre><code(?: class="language-([\w+#-]+)")?>/g, (_, lang?: string) =>
-      `<div class="code"><div class="code-head"><span>${lang ?? 'text'}</span><button type="button" class="code-copy">Copy</button></div><pre><code>`,
+    .replace(/<pre><code(?: class="language-([\w+#-]+)[^"]*")?>/g, (_, lang?: string) =>
+      `<div class="code"><div class="code-head"><span>${lang ?? 'text'}</span><button type="button" class="code-copy">Copy</button></div><pre><code class="hljs">`,
     )
     .replace(/<\/code><\/pre>/g, '</code></pre></div>')
     .replace(/<table>/g, '<div class="table"><table>')

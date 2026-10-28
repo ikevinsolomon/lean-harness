@@ -1,22 +1,46 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { relativeDate } from '../lib';
+import type { SearchResult } from '@lean-harness/widget/client';
+import { api, relativeDate } from '../lib';
 import { useApp } from '../store';
 import { Dialog } from './Dialog';
 import { NewChat, Search } from './Icons';
 
-/** Find a chat by its title. Arrow keys move, Enter opens. */
+interface Row {
+  id: string;
+  title: string;
+  detail?: string;
+  when?: string;
+}
+
+/** Find a chat by its title or by something said in it. Arrow keys move, Enter opens. */
 export function SearchDialog() {
   const { sessions, setDialog } = useApp();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
+  const [hits, setHits] = useState<SearchResult[]>([]);
   const [selected, setSelected] = useState(0);
   const close = () => setDialog(null);
 
-  const results = useMemo(() => {
+  // Search message text on the server, shortly after typing stops.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) return setHits([]);
+    const timer = setTimeout(() => api.search(q).then((r) => setHits(r.results), () => setHits([])), 250);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const rows = useMemo<Row[]>(() => {
     const q = query.trim().toLowerCase();
-    return q ? sessions.filter((s) => (s.title ?? '').toLowerCase().includes(q)) : sessions.slice(0, 12);
-  }, [query, sessions]);
+    const byTitle = (q ? sessions.filter((s) => (s.title ?? '').toLowerCase().includes(q)) : sessions.slice(0, 12)).map((s) => ({
+      id: s.id,
+      title: s.title || 'New chat',
+      when: relativeDate(s.updatedAt),
+    }));
+    const seen = new Set(byTitle.map((r) => r.id));
+    const byText = hits.filter((h) => !seen.has(h.sessionId)).map((h) => ({ id: h.sessionId, title: h.title || 'New chat', detail: h.snippet }));
+    return [...byTitle, ...byText];
+  }, [query, sessions, hits]);
 
   const open = (path: string) => {
     close();
@@ -30,13 +54,13 @@ export function SearchDialog() {
         <span className="sr-only">Search chats</span>
         <input
           autoFocus
-          placeholder="Search chats…"
+          placeholder="Search chats and messages…"
           value={query}
           onChange={(e) => (setQuery(e.target.value), setSelected(0))}
           onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') (e.preventDefault(), setSelected((i) => Math.min(i + 1, results.length - 1)));
+            if (e.key === 'ArrowDown') (e.preventDefault(), setSelected((i) => Math.min(i + 1, rows.length - 1)));
             if (e.key === 'ArrowUp') (e.preventDefault(), setSelected((i) => Math.max(i - 1, 0)));
-            if (e.key === 'Enter' && results[selected]) open(`/c/${results[selected].id}`);
+            if (e.key === 'Enter' && rows[selected]) open(`/c/${rows[selected].id}`);
           }}
         />
       </label>
@@ -47,20 +71,23 @@ export function SearchDialog() {
             New chat
           </button>
         )}
-        {results.map((s, i) => (
+        {rows.map((r, i) => (
           <button
-            key={s.id}
+            key={`${r.id}-${i}`}
             role="option"
             aria-selected={i === selected}
             className={`menu-item ${i === selected ? 'focused' : ''}`}
             onMouseEnter={() => setSelected(i)}
-            onClick={() => open(`/c/${s.id}`)}
+            onClick={() => open(`/c/${r.id}`)}
           >
-            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title || 'New chat'}</span>
-            <span className="when">{relativeDate(s.updatedAt)}</span>
+            <span style={{ minWidth: 0, flex: 1 }}>
+              <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</span>
+              {r.detail && <span className="sub snippet">{r.detail}</span>}
+            </span>
+            {r.when && <span className="when">{r.when}</span>}
           </button>
         ))}
-        {query && !results.length && <p className="side-empty">No chats match “{query}”.</p>}
+        {query.trim().length >= 2 && !rows.length && <p className="side-empty">Nothing matches “{query}”.</p>}
       </div>
     </Dialog>
   );

@@ -33,6 +33,7 @@ export interface Session {
 export interface SessionSummary {
   id: string;
   running?: boolean;
+  metadata?: Record<string, unknown>;
   title?: string;
   model: string;
   updatedAt: string;

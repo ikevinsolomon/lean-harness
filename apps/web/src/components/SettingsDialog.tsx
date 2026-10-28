@@ -1,7 +1,9 @@
-import { mod, PROVIDER_COLORS } from '../lib';
+import { useEffect, useState } from 'react';
+import type { MemoryRecord } from '@lean-harness/widget/client';
+import { api, mod, PROVIDER_COLORS } from '../lib';
 import { useApp, type Theme } from '../store';
 import { Dialog } from './Dialog';
-import { Check, Monitor, Moon, Sun } from './Icons';
+import { Check, Monitor, Moon, Sun, Trash } from './Icons';
 
 const THEMES: { id: Theme; label: string; icon: typeof Sun }[] = [
   { id: 'light', label: 'Light', icon: Sun },
@@ -29,7 +31,20 @@ const SHORTCUTS: [string, string[]][] = [
 ];
 
 export function SettingsDialog() {
-  const { theme, setTheme, models, defaultModel, setDefaultModel, setDialog } = useApp();
+  const { theme, setTheme, models, defaultModel, setDefaultModel, setDialog, sessions, toast } = useApp();
+  // null: the server does not expose memory (no memory store configured).
+  const [memories, setMemories] = useState<MemoryRecord[] | null>(null);
+  useEffect(() => {
+    api.memories().then((r) => setMemories(r.memories), () => setMemories(null));
+  }, []);
+  const forget = async (id: string) => {
+    await api.deleteMemory(id).catch(() => toast('Could not delete that memory'));
+    setMemories((all) => all?.filter((m) => m.id !== id) ?? null);
+  };
+  const tokens = sessions.reduce((sum, s) => {
+    const u = (s.metadata?.usage ?? {}) as Record<string, number | undefined>;
+    return sum + (u.inputTokens ?? 0) + (u.outputTokens ?? 0) + (u.cacheReadTokens ?? 0) + (u.cacheWriteTokens ?? 0);
+  }, 0);
   return (
     <Dialog title="Settings" onClose={() => setDialog(null)}>
       <div className="dialog-body">
@@ -59,6 +74,33 @@ export function SettingsDialog() {
               </option>
             ))}
           </select>
+        </div>
+        {memories && (
+          <div className="setting" style={{ display: 'block' }}>
+            <b>Memory</b>
+            <small>What the assistant remembers about you across chats. Delete anything that is wrong or private.</small>
+            {memories.length ? (
+              <ul className="memories">
+                {[...memories].reverse().map((m) => (
+                  <li key={m.id}>
+                    <span>{m.text}</span>
+                    <button className="icon-btn small" title="Forget" aria-label={`Forget: ${m.text}`} onClick={() => forget(m.id)}>
+                      <Trash size={15} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="side-empty" style={{ padding: '8px 0 0' }}>Nothing remembered yet.</p>
+            )}
+          </div>
+        )}
+        <div className="setting">
+          <div>
+            <b>Usage</b>
+            <small>Tokens used across your chats</small>
+          </div>
+          <span className="usage">{tokens.toLocaleString()}</span>
         </div>
         <div className="setting" style={{ display: 'block' }}>
           <b>Providers</b>

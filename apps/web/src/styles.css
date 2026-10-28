@@ -1350,6 +1350,34 @@ a {
   border-radius: 10px;
   background: var(--panel);
 }
+.memories {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.memories li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 14px;
+}
+.memories li span {
+  flex: 1;
+  min-width: 0;
+}
+.usage {
+  font: 500 14px var(--mono);
+}
+.menu-item .snippet {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .providers {
   list-style: none;
   margin: 10px 0 0;
@@ -1548,4 +1576,91 @@ a {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* ---------- code highlighting (highlight.js classes, in the app's palette) ---------- */
+.hljs-comment,
+.hljs-quote {
+  color: var(--faint);
+  font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-built_in,
+.hljs-type {
+  color: #7c3aed;
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-attribute,
+.hljs-template-tag {
+  color: #15803d;
+}
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-variable.constant_ {
+  color: #c2410c;
+}
+.hljs-title,
+.hljs-title.function_,
+.hljs-section,
+.hljs-name {
+  color: #1d4ed8;
+}
+.hljs-attr,
+.hljs-property,
+.hljs-params,
+.hljs-variable {
+  color: #0e7490;
+}
+.hljs-meta,
+.hljs-tag {
+  color: var(--muted);
+}
+.hljs-deletion {
+  color: #b91c1c;
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 600;
+}
+:root[data-theme='dark'] .hljs-keyword,
+:root[data-theme='dark'] .hljs-selector-tag,
+:root[data-theme='dark'] .hljs-literal,
+:root[data-theme='dark'] .hljs-built_in,
+:root[data-theme='dark'] .hljs-type {
+  color: #c4b5fd;
+}
+:root[data-theme='dark'] .hljs-string,
+:root[data-theme='dark'] .hljs-regexp,
+:root[data-theme='dark'] .hljs-addition,
+:root[data-theme='dark'] .hljs-attribute,
+:root[data-theme='dark'] .hljs-template-tag {
+  color: #86efac;
+}
+:root[data-theme='dark'] .hljs-number,
+:root[data-theme='dark'] .hljs-symbol,
+:root[data-theme='dark'] .hljs-bullet,
+:root[data-theme='dark'] .hljs-variable.constant_ {
+  color: #fdba74;
+}
+:root[data-theme='dark'] .hljs-title,
+:root[data-theme='dark'] .hljs-title.function_,
+:root[data-theme='dark'] .hljs-section,
+:root[data-theme='dark'] .hljs-name {
+  color: #93c5fd;
+}
+:root[data-theme='dark'] .hljs-attr,
+:root[data-theme='dark'] .hljs-property,
+:root[data-theme='dark'] .hljs-params,
+:root[data-theme='dark'] .hljs-variable {
+  color: #67e8f9;
+}
+:root[data-theme='dark'] .hljs-deletion {
+  color: #fca5a5;
 }
