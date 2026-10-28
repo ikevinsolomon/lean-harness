@@ -1,12 +1,22 @@
-import { mod } from '../lib';
+import { mod, PROVIDER_COLORS } from '../lib';
 import { useApp, type Theme } from '../store';
 import { Dialog } from './Dialog';
-import { Monitor, Moon, Sun } from './Icons';
+import { Check, Monitor, Moon, Sun } from './Icons';
 
 const THEMES: { id: Theme; label: string; icon: typeof Sun }[] = [
   { id: 'light', label: 'Light', icon: Sun },
   { id: 'dark', label: 'Dark', icon: Moon },
   { id: 'system', label: 'System', icon: Monitor },
+];
+
+/** Providers the server can use. A provider is connected when its key is in the server's .env. */
+const PROVIDERS: { id: string; name: string; how: string }[] = [
+  { id: 'anthropic', name: 'Anthropic (Claude)', how: 'ANTHROPIC_API_KEY' },
+  { id: 'openai', name: 'OpenAI', how: 'OPENAI_API_KEY' },
+  { id: 'deepseek', name: 'DeepSeek', how: 'DEEPSEEK_API_KEY' },
+  { id: 'gemini', name: 'Google Gemini', how: 'GEMINI_API_KEY' },
+  { id: 'openrouter', name: 'OpenRouter', how: 'OPENROUTER_API_KEY' },
+  { id: 'ollama', name: 'Ollama (local models)', how: 'Run Ollama and pull a model' },
 ];
 
 const SHORTCUTS: [string, string[]][] = [
@@ -49,6 +59,29 @@ export function SettingsDialog() {
               </option>
             ))}
           </select>
+        </div>
+        <div className="setting" style={{ display: 'block' }}>
+          <b>Providers</b>
+          <small>The model menu lists models from connected providers. Connect one by adding its key to the server's .env and restarting it.</small>
+          <ul className="providers">
+            {PROVIDERS.map((p) => {
+              const count = models.filter((m) => m.provider === p.id).length;
+              return (
+                <li key={p.id}>
+                  <span className="dot" style={{ background: PROVIDER_COLORS[p.id] }} />
+                  <span className="name">{p.name}</span>
+                  {count ? (
+                    <span className="connected">
+                      <Check size={14} />
+                      {count} {count === 1 ? 'model' : 'models'}
+                    </span>
+                  ) : (
+                    <code className="how">{p.how}</code>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </div>
         <div className="setting" style={{ display: 'block' }}>
           <b>Keyboard shortcuts</b>

@@ -37,8 +37,9 @@ const providers: Provider[] = [
   ...(env.GEMINI_API_KEY ? [gemini({ models: list(env.GEMINI_MODELS) })] : []),
   ...(env.OPENROUTER_API_KEY ? [openrouter({ models: list(env.OPENROUTER_MODELS) })] : []),
   ollama(),
-  mock(),
 ];
+// The offline mock model is for trying things without a key; it steps aside once a real provider is connected.
+if (providers.length === 1 || env.MOCK_MODEL === '1') providers.push(mock());
 
 const defaultModel =
   env.DEFAULT_MODEL ||
