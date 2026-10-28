@@ -205,6 +205,14 @@ export const styles = css`
     pointer-events: none;
     color: var(--lc-muted);
   }
+  .model.static .name {
+    padding: 0 12px 0 24px;
+    font-size: 12.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .model select {
     appearance: none;
     width: 100%;

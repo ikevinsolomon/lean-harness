@@ -426,17 +426,19 @@ export class LeanChat extends LitElement {
 
   private renderHeader() {
     const current = this.models.find((m) => m.id === this.model);
-    const picker =
-      !this.hideModelPicker && this.models.length > 1
+    const dot = html`<span class="dot" style="background:${PROVIDER_COLORS[current?.provider ?? ''] ?? '#a1a1aa'}"></span>`;
+    // Always show which model answers; it becomes a menu when there is more than one to choose from.
+    const picker = this.hideModelPicker || !this.model
+      ? nothing
+      : this.models.length > 1
         ? html`<label class="model">
-            <span class="sr-only">Model</span>
-            <span class="dot" style="background:${PROVIDER_COLORS[current?.provider ?? ''] ?? '#a1a1aa'}"></span>
+            <span class="sr-only">Model</span>${dot}
             <select .value=${this.model} ?disabled=${this.busy} @change=${(e: Event) => this.changeModel((e.target as HTMLSelectElement).value)}>
               ${this.models.map((m) => html`<option value=${m.id} ?selected=${m.id === this.model}>${m.label ?? m.id}</option>`)}
             </select>
             <span class="chevron">${svgIcon(icon.down, 12)}</span>
           </label>`
-        : nothing;
+        : html`<span class="model static" title="Model">${dot}<span class="name">${current?.label ?? this.model}</span></span>`;
     return html`<header>
       <div class="mark" aria-hidden="true">${this.heading.trim().charAt(0).toUpperCase()}</div>
       <div class="titles">
