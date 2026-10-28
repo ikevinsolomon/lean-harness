@@ -6,7 +6,8 @@ import { css } from 'lit';
  */
 export const styles = css`
   :host {
-    --lc-accent: #2563eb;
+    --lc-accent: #7c3aed;
+    --lc-tint: rgb(124 58 237 / 0.09);
     --lc-on-accent: #ffffff;
     --lc-bg: #fbfbf9;
     --lc-panel: #ffffff;
@@ -19,14 +20,15 @@ export const styles = css`
     --lc-ok: #15803d;
     --lc-danger: #c2410c;
     --lc-radius: 20px;
-    --lc-font: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-    --lc-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    --lc-font: Geist, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --lc-display: 'Bricolage Grotesque', var(--lc-font);
+    --lc-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
     --lc-shadow: 0 32px 80px -24px rgb(24 24 27 / 0.35), 0 2px 8px rgb(24 24 27 / 0.08);
 
     display: block;
     font-family: var(--lc-font);
-    font-size: 14.5px;
-    line-height: 1.55;
+    font-size: 15px;
+    line-height: 1.6;
     color: var(--lc-ink);
     -webkit-font-smoothing: antialiased;
   }
@@ -46,6 +48,9 @@ export const styles = css`
     --lc-on-bubble: #111113;
     --lc-ok: #4ade80;
     --lc-danger: #fb923c;
+    --lc-accent: #a78bfa;
+    --lc-on-accent: #17151c;
+    --lc-tint: rgb(167 139 250 / 0.14);
     --lc-shadow: 0 32px 80px -24px rgb(0 0 0 / 0.7);
   }
   @media (prefers-color-scheme: dark) {
@@ -60,6 +65,9 @@ export const styles = css`
       --lc-on-bubble: #111113;
       --lc-ok: #4ade80;
       --lc-danger: #fb923c;
+      --lc-accent: #a78bfa;
+      --lc-on-accent: #17151c;
+      --lc-tint: rgb(167 139 250 / 0.14);
       --lc-shadow: 0 32px 80px -24px rgb(0 0 0 / 0.7);
     }
   }
@@ -168,8 +176,10 @@ export const styles = css`
     min-width: 0;
   }
   .title {
-    font-weight: 600;
-    letter-spacing: -0.01em;
+    font-family: var(--lc-display);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -317,7 +327,9 @@ export const styles = css`
   .md h1,
   .md h2,
   .md h3 {
-    font-size: 15px;
+    font-family: var(--lc-display);
+    letter-spacing: -0.015em;
+    font-size: 16px;
     font-weight: 600;
     margin: 14px 0 6px;
   }
@@ -505,9 +517,10 @@ export const styles = css`
     max-width: 100%;
     padding: 5px 12px 5px 9px;
     border-radius: 999px;
-    background: var(--lc-surface);
+    background: var(--lc-tint);
     font-size: 12.5px;
-    color: var(--lc-muted);
+    font-weight: 500;
+    color: var(--lc-accent);
   }
   .note span {
     white-space: nowrap;
@@ -564,14 +577,16 @@ export const styles = css`
   }
   .empty h2 {
     margin: 0;
-    font-size: 26px;
-    font-weight: 600;
-    letter-spacing: -0.025em;
-    line-height: 1.2;
+    font-family: var(--lc-display);
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 1.1;
   }
   .empty h2 .soft {
     display: block;
     margin-top: 4px;
+    font-weight: 500;
     color: var(--lc-muted);
   }
   .cards {
@@ -586,20 +601,41 @@ export const styles = css`
   }
   .card {
     text-align: left;
-    padding: 12px 14px;
+    padding: 12px;
     border: 1px solid var(--lc-border);
-    border-radius: 14px;
+    border-radius: 16px;
     background: var(--lc-panel);
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 8px;
+    box-shadow: 0 1px 2px rgb(24 24 27 / 0.04);
     transition: border-color 0.15s, transform 0.15s;
+  }
+  .card:hover {
+    transform: translateY(-1px);
+  }
+  .card .tile {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    display: grid;
+    place-items: center;
+    background: var(--lc-tint);
+    color: var(--lc-accent);
+  }
+  .card .words {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
   }
   .card:hover {
     border-color: color-mix(in srgb, var(--lc-ink) 25%, var(--lc-border));
   }
   .card b {
     font-weight: 500;
+    font-size: 14px;
   }
   .card small {
     font-size: 12.5px;
@@ -734,6 +770,9 @@ export const styles = css`
     color: var(--lc-on-accent);
     background: var(--lc-accent);
     transition: background 0.15s, transform 0.15s;
+  }
+  .send:not(:disabled):not(.stop) {
+    box-shadow: 0 6px 16px -6px var(--lc-accent);
   }
   .send:disabled {
     background: var(--lc-surface);

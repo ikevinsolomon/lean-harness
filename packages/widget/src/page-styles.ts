@@ -51,8 +51,10 @@ export const pageStyles = css`
   .side-title {
     flex: 1;
     min-width: 0;
-    font-weight: 600;
-    letter-spacing: -0.01em;
+    font-family: var(--lc-display);
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -74,9 +76,11 @@ export const pageStyles = css`
     background: color-mix(in srgb, var(--lc-ink) 11%, transparent);
   }
   .side-label {
-    padding: 16px 10px 4px;
-    font-size: 12px;
-    font-weight: 500;
+    padding: 18px 10px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     color: var(--lc-muted);
   }
   .history {
@@ -287,21 +291,24 @@ export const pageStyles = css`
     text-align: center;
   }
   .hero-mark {
-    width: 52px;
-    height: 52px;
-    border-radius: 15px;
-    margin-bottom: 14px;
+    width: 64px;
+    height: 64px;
+    border-radius: 18px;
+    margin-bottom: 18px;
+    box-shadow: 0 18px 40px -14px color-mix(in srgb, var(--lc-accent) 60%, transparent);
   }
   .hero h2 {
     margin: 0;
-    font-size: 32px;
-    font-weight: 600;
-    letter-spacing: -0.025em;
-    line-height: 1.2;
+    font-family: var(--lc-display);
+    font-size: 44px;
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 1.1;
   }
   .hero h2 .soft {
     display: block;
     margin-top: 4px;
+    font-weight: 500;
     color: var(--lc-muted);
   }
   .hero form {
@@ -315,8 +322,16 @@ export const pageStyles = css`
     gap: 10px;
   }
   .hero .card {
-    padding: 14px 16px;
-    border-radius: 16px;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 18px;
+  }
+  .hero .card .tile {
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
   }
   .scrim {
     display: none;
@@ -364,7 +379,9 @@ export const pageStyles = css`
       gap: 10px;
       flex: 1;
       min-width: 0;
-      font-weight: 600;
+    }
+    .top-brand .title {
+      font-size: 17px;
     }
     .top-brand .mark {
       width: 26px;
@@ -410,7 +427,19 @@ export const pageStyles = css`
       display: none;
     }
     .hero h2 {
-      font-size: 26px;
+      font-size: 30px;
+    }
+    .hero .card {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 12px;
+      border-radius: 16px;
+    }
+    .hero .card .tile {
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
     }
     /* On a phone the suggestions sit above the composer, as in the embedded widget. */
     .hero .cards {

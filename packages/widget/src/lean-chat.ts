@@ -41,6 +41,10 @@ const icon = {
   trash: svg`<path d="M5 7h14M10 11v6M14 11v6M6.5 7l1 12a2 2 0 002 2h5a2 2 0 002-2l1-12M9.5 7V5a1 1 0 011-1h3a1 1 0 011 1v2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`,
   sun: svg`<circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6L6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>`,
   moon: svg`<path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>`,
+  spark: svg`<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>`,
+  bulb: svg`<path d="M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0012 3z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>`,
+  compass: svg`<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M15.5 8.5l-2 5-5 2 2-5z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>`,
+  bubble: svg`<path d="M4 5.5A2.5 2.5 0 016.5 3h11A2.5 2.5 0 0120 5.5v8a2.5 2.5 0 01-2.5 2.5H10l-4.5 4v-4A1.5 1.5 0 014 14.5z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>`,
   brain: svg`<path d="M9 4a3 3 0 00-3 3 3 3 0 00-2 5 3 3 0 002 5 3 3 0 006 0V4.5A2.5 2.5 0 009 4zM15 4a3 3 0 013 3 3 3 0 012 5 3 3 0 01-2 5 3 3 0 01-6 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>`,
 };
 
@@ -534,8 +538,9 @@ export class LeanChat extends LitElement {
     return cards.length
       ? html`<div class="cards">
           ${cards.map(
-            (c) => html`<button class="card" @click=${() => this.send(c.title)}>
-              <b>${c.title}</b>${c.detail ? html`<small>${c.detail}</small>` : nothing}
+            (c, i) => html`<button class="card" @click=${() => this.send(c.title)}>
+              <span class="tile">${svgIcon([icon.spark, icon.bulb, icon.compass, icon.bubble][i % 4]!, 17)}</span>
+              <span class="words"><b>${c.title}</b>${c.detail ? html`<small>${c.detail}</small>` : nothing}</span>
             </button>`,
           )}
         </div>`
