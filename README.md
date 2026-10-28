@@ -8,7 +8,8 @@
 - **Everything is a plugin.** A domain (support desk, analytics, travel, ...) is a plugin: instructions, tools and hooks. Model providers are plugins too.
 - **API-first.** A plain HTTP + Server-Sent Events API, so you can build any UI on top: web, mobile, Slack, CLI.
 - **A UI you can embed anywhere.** `<lean-chat>` is a web component: a full-screen chat app like Claude or ChatGPT, a box in your page, or a floating button. Two lines of HTML, any framework, light and dark, themeable.
-- **Small enough to read in an afternoon.** The core is about 1,500 lines with comments, built-in plugins included. No framework to learn.
+- **Production pieces included.** Users and sign-in, SQLite or Postgres storage, replies that keep running when the tab closes, MCP servers, tool approvals, attachments, long-conversation summaries, token budgets, tracing, and a Docker setup.
+- **Small enough to read in an afternoon.** No framework to learn; every part is a short file you can replace.
 
 ```
 ┌──────────── your UI ─────────────┐     ┌──────────────── lean-harness ────────────────┐
@@ -175,11 +176,12 @@ MCP tools ask by default unless the server marks them read-only (`approval: 'unl
 
 ## HTTP API
 
-All routes are under `/v1`. Set `apiKey` (or an `authorize` function) in `createServer` to require auth.
+All routes are under `/v1`. With `authenticate`, every route needs a signed-in user and only shows that user's sessions.
 
 | Method | Path | |
 |---|---|---|
 | `GET` | `/health` | Liveness (no auth) |
+| `GET` | `/me` | `{ user }`, or `{ user: null }` without sign-in |
 | `GET` | `/models` | `{ defaultModel, models: [{ id, provider, model, label }] }` |
 | `GET` | `/tools` | Tools and their JSON Schemas |
 | `GET` | `/sessions` | Session summaries, newest first |
@@ -187,8 +189,12 @@ All routes are under `/v1`. Set `apiKey` (or an `authorize` function) in `create
 | `GET` | `/sessions/:id` | Session with all messages |
 | `PATCH` | `/sessions/:id` | `{ model?, title?, metadata? }`; switch the model here |
 | `DELETE` | `/sessions/:id` | |
+| `POST` | `/sessions/:id/stop` | Stop the running reply |
+| `GET` | `/sessions/:id/stream` | Reconnect to the running reply (`?from=N` skips events already seen) |
+| `GET` | `/search?q=` | Find messages in your sessions |
+| `GET`, `DELETE` | `/memories`, `/memories/:id` | What the assistant remembers about you (when `memory` is passed to `createServer`) |
 | `POST` | `/sessions/:id/approvals/:callId` | `{ approved, always? }`: allow or decline a tool call that is waiting |
-| `POST` | `/sessions/:id/messages` | `{ content, model?, context?, replaceFrom?, stream? }` → event stream, or JSON when `stream: false`. `replaceFrom` is a user message id: it and everything after it are replaced (retry, edit) |
+| `POST` | `/sessions/:id/messages` | `{ content, model?, context?, files?, replaceFrom?, stream? }` → event stream, or JSON when `stream: false`. `replaceFrom` is a user message id: it and everything after it are replaced (retry, edit) |
 
 A turn streams as Server-Sent Events, one per event:
 
@@ -201,13 +207,82 @@ A turn streams as Server-Sent Events, one per event:
 | `tool_result` | `{ id, name, output, isError }` |
 | `message` | `{ message }`: each stored message (user, assistant, tool results) |
 | `error` | `{ message }` |
-| `turn_end` | `{ stopReason, usage, steps }`; `stopReason` is `end`, `max_steps`, `max_tokens`, `refusal`, `aborted` or `error` |
+| `turn_end` | `{ stopReason, usage, steps }`; `stopReason` is `end`, `max_steps`, `max_tokens`, `budget`, `refusal`, `aborted` or `error` |
 
 ```bash
 curl -s -X POST localhost:8787/v1/sessions -H 'content-type: application/json' -d '{}'
 curl -N -X POST localhost:8787/v1/sessions/<id>/messages -H 'content-type: application/json' \
   -d '{"content": "What is on my list?", "model": "deepseek/deepseek-chat"}'
 ```
+
+## Users and sign-in
+
+Sign-in is off by default (single-user). Turn it on with `authenticate` in `createServer`; every session then belongs to its creator, people only see their own chats, and memory follows the user.
+
+```ts
+import { createServer, jwtAuth, tokenAuth } from '@lean-harness/server';
+
+createServer(harness, { authenticate: tokenAuth({ 'long-random-token': { id: 'asha', name: 'Asha' } }) });
+createServer(harness, { authenticate: jwtAuth({ secret: process.env.SUPABASE_JWT_SECRET!, audience: 'authenticated' }) });
+createServer(harness, { authenticate: async (req) => (await mySession(req)) ?? null }); // any sign-in system
+```
+
+In the quickstart, set `HARNESS_USERS=asha:token1,ben:token2` in `.env`: the web app then shows a sign-in screen that takes an access token.
+
+## Storage
+
+| Store | Use |
+|---|---|
+| `MemoryStore` | Tests and demos (the default) |
+| `FileStore(dir)` | One JSON file per chat |
+| `await SqliteStore.open('chats.db')` | One server; uses Node's built-in SQLite |
+| `new PostgresStore(pool)` | Many servers; any client with `query()`: `pg`, Neon, Supabase, PGlite |
+
+The quickstart uses SQLite, or Postgres when `DATABASE_URL` is set. Implement `SessionStore` (seven methods) for anything else.
+
+## Long conversations, budgets and timeouts
+
+```ts
+createHarness({
+  ...,
+  context: { maxTokens: 150_000, keepRecent: 12 },     // the default; false turns it off
+  budget: { turnTokens: 200_000, sessionTokens: 2_000_000 },
+  toolTimeoutMs: 120_000,
+});
+```
+
+When a conversation would exceed `maxTokens`, older turns are summarised by the model and the summary replaces them in the request; storage is untouched. Budgets stop a reply (`stopReason: "budget"`) or refuse new ones once spent. Each session keeps its running token usage in `metadata.usage`.
+
+## Replies in the background
+
+Replies run on the server, not in the HTTP request: closing the tab does not stop them. `POST /sessions/:id/stop` stops one; `GET /sessions/:id/stream` reconnects (and replays the turn so far). In code: `harness.start`, `harness.watch`, `harness.stop`.
+
+## Attachments
+
+Messages can carry images (PNG, JPEG, GIF, WebP), PDFs and text files: `files: [{ name, mediaType, data }]` (base64) on the API, or the paperclip, drag and drop, and paste in the web app. Claude reads images and PDFs natively; OpenAI-style providers get image URLs and file parts; text files reach every model as text.
+
+## Built-in tools
+
+```ts
+import { subagentTool, webFetchPlugin } from '@lean-harness/core';
+
+webFetchPlugin();          // fetch_url: reads public pages; private and local addresses are refused
+subagentTool({ name: 'researcher', description: 'Looks things up', providers, defaultModel: 'anthropic/claude-haiku-5-5' });
+await harness.extract(z.object({ city: z.string() }), 'I live in Pune'); // structured output: { city: 'Pune' }
+```
+
+## Tracing
+
+`tracing()` records one trace per reply: each model call (time, tokens), each tool call (time, success), and an estimated cost when you give it prices. By default it prints one line per reply; pass `onTrace` to send traces to your own logs or monitoring.
+
+## Deploy
+
+```bash
+docker compose up --build           # the app on :8787 with Postgres; reads examples/quickstart/.env
+docker build -t lean-harness .      # or just the image
+```
+
+For production: set `HARNESS_USERS` (or your own `authenticate`), `CORS_ORIGIN`, `RATE_LIMIT_PER_MINUTE`, and `DATABASE_URL`; put it behind HTTPS.
 
 ## Project layout
 
@@ -231,7 +306,9 @@ pnpm build       # dist/ for every package
 
 - Tool inputs are validated, but a tool is your code: check permissions inside it, and use `beforeToolCall` for approval gates.
 - Model output is untrusted. The widget renders Markdown through DOMPurify.
-- A token in `<lean-chat token>` is visible to the page's users. For public sites, put the API behind your own auth (`authorize`) or a backend that adds credentials.
+- A token in `<lean-chat token>` is visible to the page's users. For public sites, use `authenticate` with your own sign-in, or a backend that adds credentials.
+- `fetch_url` refuses private and local addresses, but DNS can change between the check and the request; run the server where the network itself blocks internal services if that matters to you.
+- Attachments and chats are stored as you send them. Treat the database as sensitive.
 
 ## License
 

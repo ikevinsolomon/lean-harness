@@ -1,0 +1,36 @@
+# Lean Harness with Postgres: docker compose up --build
+# Put provider keys (and HARNESS_USERS for sign-in) in examples/quickstart/.env first.
+services:
+  app:
+    build: .
+    ports:
+      - "${LEAN_HARNESS_PORT:-8787}:8787"
+    env_file:
+      - path: examples/quickstart/.env
+        required: false
+    environment:
+      DATABASE_URL: postgres://lean:lean@db:5432/lean
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - app-data:/app/examples/quickstart/.data
+    restart: unless-stopped
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: lean
+      POSTGRES_PASSWORD: lean
+      POSTGRES_DB: lean
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lean"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  app-data:
+  db-data:
