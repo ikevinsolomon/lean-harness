@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useMatch, useNavigate } from 'react-router';
 import { ChatView } from './components/ChatView';
 import { SearchDialog } from './components/SearchDialog';
+import { PeopleDialog } from './components/PeopleDialog';
 import { SettingsDialog } from './components/SettingsDialog';
 import { SignIn } from './components/SignIn';
 import { Sidebar } from './components/Sidebar';
@@ -14,7 +15,7 @@ import { useApp } from './store';
  * new chat gets its id mid-stream.
  */
 export function App() {
-  const { collapsed, drawer, setDrawer, dialog, setDialog, toggleSidebar, needsSignIn } = useApp();
+  const { collapsed, drawer, setDrawer, dialog, setDialog, toggleSidebar, gate } = useApp();
   const match = useMatch('/c/:id');
   const navigate = useNavigate();
 
@@ -39,7 +40,7 @@ export function App() {
     return () => document.removeEventListener('keydown', onKey);
   }, [dialog, navigate, setDialog, toggleSidebar]);
 
-  if (needsSignIn) return <SignIn />;
+  if (gate) return <SignIn />;
 
   return (
     <div className={`app ${collapsed ? 'collapsed' : ''} ${drawer ? 'drawer' : ''}`}>
@@ -48,6 +49,7 @@ export function App() {
       <ChatView id={match?.params.id} />
       {dialog === 'search' && <SearchDialog />}
       {dialog === 'settings' && <SettingsDialog />}
+      {dialog === 'people' && <PeopleDialog />}
     </div>
   );
 }

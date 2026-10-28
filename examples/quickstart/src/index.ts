@@ -13,14 +13,16 @@ import {
   ollama,
   openai,
   openrouter,
-  PostgresStore,
-  SqliteStore,
+  openSqlite,
+  postgresDb,
+  SqlMemory,
+  SqlSessionStore,
   tracing,
   webFetchPlugin,
   type Provider,
-  type SessionStore,
+  type SqlDb,
 } from '@lean-harness/core';
-import { createServer, Hono, serve, tokenAuth, type User } from '@lean-harness/server';
+import { Accounts, createServer, Hono, serve, tokenAuth, type User } from '@lean-harness/server';
 import { clockPlugin } from './clock-plugin.js';
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
@@ -36,7 +38,8 @@ try {
 const env = process.env;
 const list = (value?: string) => value?.split(',').map((s) => s.trim()).filter(Boolean);
 const providers: Provider[] = [
-  ...(env.ANTHROPIC_API_KEY ? [anthropic()] : []),
+  // Claude's own web search and code sandbox run on Anthropic's servers and are billed per use.
+  ...(env.ANTHROPIC_API_KEY ? [anthropic({ webSearch: env.CLAUDE_WEB_SEARCH === '1', codeExecution: env.CLAUDE_CODE_EXECUTION === '1' })] : []),
   ...(env.OPENAI_API_KEY ? [openai({ models: list(env.OPENAI_MODELS) })] : []),
   ...(env.DEEPSEEK_API_KEY ? [deepseek()] : []),
   ...(env.GEMINI_API_KEY ? [gemini({ models: list(env.GEMINI_MODELS) })] : []),
@@ -66,16 +69,18 @@ const mcp = await mcpPlugin({
 });
 for (const s of mcp.servers) console.log(`MCP server "${s.name}": ${s.tools.join(', ')}`);
 
-// Where chats are kept: Postgres when DATABASE_URL is set, else a SQLite file.
-async function openStore(): Promise<SessionStore> {
+// One database for chats, memory and accounts: Postgres when DATABASE_URL is set, else a SQLite file.
+async function openDb(): Promise<SqlDb> {
   if (env.DATABASE_URL) {
     const { default: pg } = await import('pg');
-    return new PostgresStore(new pg.Pool({ connectionString: env.DATABASE_URL }));
+    return postgresDb(new pg.Pool({ connectionString: env.DATABASE_URL }));
   }
-  return SqliteStore.open(env.DATABASE_FILE || here('../.data/lean-harness.db'));
+  return openSqlite(env.DATABASE_FILE || here('../.data/lean-harness.db'));
 }
+const db = await openDb();
 
-const memory = new FileMemory(env.MEMORY_FILE || here('../.data/memory.json'));
+// Long-term memory lives in the database; MEMORY_FILE keeps it in a JSON file instead.
+const memory = env.MEMORY_FILE ? new FileMemory(env.MEMORY_FILE) : new SqlMemory(db);
 
 const harness = createHarness({
   providers,
@@ -101,7 +106,7 @@ const harness = createHarness({
   ],
   defaultModel,
   instructions: 'You are Lean Harness, a helpful assistant. Answer clearly and briefly.',
-  store: await openStore(),
+  store: new SqlSessionStore(db),
 });
 
 const app = new Hono();
@@ -110,20 +115,42 @@ const app = new Hono();
 app.use('/v1/*', async (c, next) => {
   const started = Date.now();
   await next();
-  console.log(`${c.req.method} ${c.req.path} ${c.res.status} ${Date.now() - started}ms`);
+  // Invite links are secrets: keep them out of the log.
+  const path = c.req.path.replace(/\/invites\/[^/]+/, '/invites/…');
+  console.log(`${c.req.method} ${path} ${c.res.status} ${Date.now() - started}ms`);
 });
-// Sign-in: HARNESS_USERS="asha:long-random-token,ben:another-token" gives each person their own
-// chats and memory. Without it the app is single-user (HARNESS_API_KEY can still lock it).
+// Sign-in, one of:
+// - accounts (the default): email and password. The first visitor creates the admin account;
+//   everyone else joins by an invite link the admin creates under People.
+// - tokens: HARNESS_USERS="asha:long-random-token,ben:another-token", for internal tools and scripts.
+// - none: AUTH=off, a single-user app (HARNESS_API_KEY can still lock the API).
 const users = Object.fromEntries(
   (list(env.HARNESS_USERS) ?? []).map((entry): [string, User] => {
     const [id, token] = entry.split(':');
     return [token!, { id: id!, name: id! }];
   }),
 );
+const tokens = Object.keys(users).length > 0;
+const accounts =
+  env.AUTH !== 'off' && !tokens && !env.HARNESS_API_KEY
+    ? new Accounts(db, {
+        // Chats made before sign-in was on belong to the admin.
+        async onSetup(admin) {
+          await harness.store.list(); // creates the tables on a new database
+          await db.query('UPDATE lh_sessions SET owner = ? WHERE owner IS NULL', [admin.id]);
+          // So do memories kept in the JSON file by earlier versions.
+          if (memory instanceof SqlMemory) {
+            for (const m of await new FileMemory(here('../.data/memory.json')).list('default')) await memory.add(admin.id, m.text);
+          }
+        },
+      })
+    : undefined;
+console.log(`Sign-in: ${accounts ? 'accounts (email and password)' : tokens ? 'access tokens' : 'off'}`);
 app.route(
   '/',
   createServer(harness, {
-    authenticate: Object.keys(users).length ? tokenAuth(users) : undefined,
+    accounts,
+    authenticate: tokens ? tokenAuth(users) : undefined,
     apiKey: env.HARNESS_API_KEY || undefined,
     corsOrigin: env.CORS_ORIGIN || '*',
     rateLimit: env.RATE_LIMIT_PER_MINUTE ? { windowMs: 60_000, max: Number(env.RATE_LIMIT_PER_MINUTE) } : undefined,
@@ -164,6 +191,23 @@ app.get('/assets/:file', async (c) => {
 const appPage = async () => readFile(`${web}/index.html`, 'utf8').catch(() => 'Build the web app first: pnpm --filter @lean-harness/web build');
 app.get('/', async (c) => c.html(await appPage()));
 app.get('/c/:id', async (c) => c.html(await appPage()));
+app.get('/invite/:token', async (c) => c.html(await appPage()));
 
-serve(app);
+const server = serve(app);
+
+// On Ctrl-C or SIGTERM (docker stop, a deploy): stop taking requests, let replies in progress
+// finish for up to 20 seconds, then stop MCP servers and exit.
+let closing = false;
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, async () => {
+    if (closing) process.exit(1); // a second Ctrl-C quits at once
+    closing = true;
+    console.log('Shutting down: waiting for replies in progress…');
+    server.close();
+    const stopped = await harness.shutdown(20_000);
+    if (stopped) console.log(`Stopped ${stopped} unfinished ${stopped === 1 ? 'reply' : 'replies'}`);
+    await mcp.close();
+    process.exit(0);
+  });
+}
 console.log(`Default model: ${defaultModel}`);

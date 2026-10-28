@@ -3,6 +3,29 @@
   "version": "0.1.0",
   "description": "<lean-chat>: a drop-in chat web component for any lean-harness server. Works in any page or framework.",
   "license": "MIT",
+  "author": "Kevin Solomon",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ikevinsolomon/lean-harness.git",
+    "directory": "packages/widget"
+  },
+  "homepage": "https://github.com/ikevinsolomon/lean-harness#readme",
+  "bugs": {
+    "url": "https://github.com/ikevinsolomon/lean-harness/issues"
+  },
+  "keywords": [
+    "ai",
+    "chat",
+    "web-component",
+    "lit",
+    "widget",
+    "llm"
+  ],
+  "sideEffects": [
+    "./dist/lean-chat.js",
+    "./dist/lib/lean-chat.js",
+    "./src/lean-chat.ts"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/lean-chat.ts",
@@ -12,13 +35,19 @@
   "publishConfig": {
     "exports": {
       ".": {
-        "types": "./dist/types/lean-chat.d.ts",
-        "default": "./dist/lean-chat.js"
-      }
+        "types": "./dist/lib/lean-chat.d.ts",
+        "default": "./dist/lib/lean-chat.js"
+      },
+      "./client": {
+        "types": "./dist/lib/client.d.ts",
+        "default": "./dist/lib/client.js"
+      },
+      "./dist/lean-chat.js": "./dist/lean-chat.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "scripts": {
     "build": "vite build && tsc -p tsconfig.build.json"

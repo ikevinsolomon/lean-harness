@@ -186,4 +186,19 @@ describe('FileStore', () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it('shuts down cleanly: lets short turns finish and stops long ones', async () => {
+    const quick = createHarness({ providers: [mock({ delayMs: 1 })], defaultModel: 'mock/echo' });
+    const a = await quick.createSession();
+    await quick.start(a.id, 'hello there');
+    expect(await quick.shutdown(5_000)).toBe(0);
+    expect(quick.isRunning(a.id)).toBe(false);
+    expect((await quick.getSession(a.id)).messages).toHaveLength(2);
+
+    const slow = createHarness({ providers: [mock({ delayMs: 200 })], defaultModel: 'mock/echo' });
+    const b = await slow.createSession();
+    await slow.start(b.id, 'a long reply please, with many words in it');
+    expect(await slow.shutdown(10)).toBe(1);
+    expect(slow.isRunning(b.id)).toBe(false);
+  });
 });

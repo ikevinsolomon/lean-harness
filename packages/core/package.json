@@ -3,6 +3,31 @@
   "version": "0.1.0",
   "description": "A small, provider-neutral agent harness: the loop, tools, plugins, model adapters and sessions.",
   "license": "MIT",
+  "author": "Kevin Solomon",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ikevinsolomon/lean-harness.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/ikevinsolomon/lean-harness#readme",
+  "bugs": {
+    "url": "https://github.com/ikevinsolomon/lean-harness/issues"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "harness",
+    "llm",
+    "claude",
+    "anthropic",
+    "openai",
+    "mcp",
+    "tools"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "sideEffects": false,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -16,7 +41,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json"

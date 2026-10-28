@@ -1,16 +1,27 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, isUnauthorized, safeStorage, type SessionSummary } from './lib';
-import type { ModelInfo, User } from '@lean-harness/widget/client';
+import { ApiError, type AuthStatus, type ModelInfo, type User } from '@lean-harness/widget/client';
 
 export type Theme = 'light' | 'dark' | 'system';
+
+/**
+ * What stands between the visitor and the app: nothing, creating the admin account
+ * (fresh server), signing in with email and password, or pasting an access token
+ * (servers that use tokens instead of built-in accounts).
+ */
+export type Gate = null | 'setup' | 'login' | 'token';
 
 interface AppState {
   /** The signed-in user; null when the server has no sign-in. */
   user: User | null;
-  /** The server wants a sign-in token we don't have (or ours was rejected). */
-  needsSignIn: boolean;
+  gate: Gate;
+  /** The server has built-in accounts (email and password, invites). */
+  accounts: boolean;
+  /** Token servers: try this access token. */
   signIn(token: string): Promise<boolean>;
-  signOut(): void;
+  /** After a sign-in, setup or accepted invite: load the app for that user. */
+  reload(): void;
+  signOut(): Promise<void>;
   models: ModelInfo[];
   /** The model new chats start with: the user's choice, else the server's default. */
   defaultModel: string;
@@ -26,11 +37,13 @@ interface AppState {
   setDrawer(value: boolean): void;
   /** Open the sidebar: a drawer on small screens, a column on wide ones. */
   toggleSidebar(): void;
-  dialog: 'search' | 'settings' | null;
-  setDialog(dialog: 'search' | 'settings' | null): void;
+  dialog: Dialog;
+  setDialog(dialog: Dialog): void;
   toast(message: string): void;
   error: string;
 }
+
+type Dialog = 'search' | 'settings' | 'people' | null;
 
 const Ctx = createContext<AppState | null>(null);
 
@@ -56,11 +69,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => (safeStorage(() => localStorage.getItem('lh:theme')) as Theme) ?? 'light');
   const [collapsed, setCollapsedState] = useState(() => safeStorage(() => localStorage.getItem('lh:collapsed')) === '1');
   const [drawer, setDrawer] = useState(false);
-  const [dialog, setDialog] = useState<'search' | 'settings' | null>(null);
+  const [dialog, setDialog] = useState<Dialog>(null);
   const [toastText, setToastText] = useState('');
   const [error, setError] = useState('');
   const [user, setUser] = useState<User | null>(null);
-  const [needsSignIn, setNeedsSignIn] = useState(false);
+  const [gate, setGate] = useState<Gate>(null);
+  const [accounts, setAccounts] = useState(false);
   const [loaded, setLoaded] = useState(0);
 
   const refreshSessions = useCallback(async () => {
@@ -72,17 +86,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    Promise.all([api.me(), api.models(), api.tools()])
-      .then(([me, m, t]) => {
-        setUser(me.user);
-        setNeedsSignIn(false);
-        setError('');
-        setModels(m.models);
-        setServerDefault(m.defaultModel);
-        setHasMemory(t.tools.some((tool) => tool.name === 'remember'));
-        void refreshSessions();
-      })
-      .catch((e) => (isUnauthorized(e) ? setNeedsSignIn(true) : setError(`Can't reach the Lean Harness server at ${location.origin}.`)));
+    const load = async () => {
+      // Servers without built-in accounts answer 404 (or 401 when they use tokens).
+      const status = await api.authStatus().catch((e): AuthStatus | null => {
+        if (e instanceof ApiError) return null;
+        throw e;
+      });
+      setAccounts(Boolean(status));
+      if (status?.setupRequired) return setGate('setup');
+      if (status && !status.user) return setGate('login');
+      const [me, m, t] = await Promise.all([api.me(), api.models(), api.tools()]);
+      setUser(me.user);
+      setGate(null);
+      setError('');
+      setModels(m.models);
+      setServerDefault(m.defaultModel);
+      setHasMemory(t.tools.some((tool) => tool.name === 'remember'));
+      void refreshSessions();
+    };
+    load().catch((e) => (isUnauthorized(e) ? setGate((g) => g ?? 'token') : setError(`Can't reach the Lean Harness server at ${location.origin}.`)));
   }, [refreshSessions, loaded]);
 
   useEffect(() => {
@@ -103,7 +125,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AppState>(
     () => ({
       user,
-      needsSignIn,
+      gate,
+      accounts,
+      reload: () => setLoaded((n) => n + 1),
       async signIn(token) {
         api.setToken(token);
         try {
@@ -116,7 +140,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setLoaded((n) => n + 1);
         return true;
       },
-      signOut() {
+      async signOut() {
+        if (accounts) await api.logout().catch(() => undefined);
         safeStorage(() => localStorage.removeItem('lh:token'));
         api.setToken(undefined);
         setSessions([]);
@@ -154,7 +179,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       error,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user, needsSignIn, models, chosenDefault, serverDefault, hasMemory, sessions, refreshSessions, theme, collapsed, drawer, dialog, error],
+    [user, gate, accounts, models, chosenDefault, serverDefault, hasMemory, sessions, refreshSessions, theme, collapsed, drawer, dialog, error],
   );
 
   return (

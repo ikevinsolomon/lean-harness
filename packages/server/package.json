@@ -3,6 +3,29 @@
   "version": "0.1.0",
   "description": "HTTP + Server-Sent Events API for a lean-harness agent, so any UI can drive it.",
   "license": "MIT",
+  "author": "Kevin Solomon",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ikevinsolomon/lean-harness.git",
+    "directory": "packages/server"
+  },
+  "homepage": "https://github.com/ikevinsolomon/lean-harness#readme",
+  "bugs": {
+    "url": "https://github.com/ikevinsolomon/lean-harness/issues"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "harness",
+    "llm",
+    "api",
+    "sse",
+    "hono"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "sideEffects": false,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -15,7 +38,10 @@
       }
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json"
   },
@@ -24,5 +50,8 @@
     "@lean-harness/core": "workspace:*",
     "hono": "^4.13.14",
     "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.13"
   }
 }

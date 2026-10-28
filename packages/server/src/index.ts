@@ -1,13 +1,17 @@
 import { serve as nodeServe } from '@hono/node-server';
-import { Harness, HarnessError, type HarnessEvent, type MemoryBackend, type Session } from '@lean-harness/core';
+import { Harness, HarnessError, searchHit, type MemoryBackend, type SearchHit, type Session } from '@lean-harness/core';
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
+import { accountRoutes, crossSite, isPublicAuthPath, sessionToken } from './account-routes.js';
+import { AccountError, Accounts } from './accounts.js';
 import type { Authenticate, User } from './auth.js';
 
 export { jwtAuth, tokenAuth } from './auth.js';
 export type { Authenticate, JwtOptions, User } from './auth.js';
+export { AccountError, Accounts } from './accounts.js';
+export type { Account, AccountOptions, Invite, Role } from './accounts.js';
 
 export interface ServerOptions {
   /**
@@ -15,6 +19,11 @@ export interface ServerOptions {
    * their own sessions, and memory follows the user. Without it, the API is single-user.
    */
   authenticate?: Authenticate;
+  /**
+   * Built-in email-and-password accounts: one admin, everyone else joins by invite link.
+   * Adds `/auth/*` and `/admin/*` routes. Can be combined with `authenticate` (tried second).
+   */
+  accounts?: Accounts;
   /** Single-user shortcut: require `Authorization: Bearer <apiKey>`. */
   apiKey?: string;
   /** Origins allowed to call the API from a browser (default "*"). Set your app's origin in production. */
@@ -77,6 +86,7 @@ const Decision = z.object({
 const STATUS = { not_found: 404, busy: 409, bad_request: 400 } as const;
 
 function fail(c: Context, error: unknown) {
+  if (error instanceof AccountError) return c.json({ error: { code: 'account', message: error.message } }, error.status);
   if (error instanceof HarnessError) return c.json({ error: { code: error.code, message: error.message } }, STATUS[error.code]);
   if (error instanceof z.ZodError) {
     return c.json({ error: { code: 'bad_request', message: z.prettifyError(error) } }, 400);
@@ -101,11 +111,16 @@ export function createServer(harness: Harness, options: ServerOptions = {}) {
   api.use('*', async (c, next) => {
     c.set('user', null);
     if (c.req.method === 'OPTIONS' || c.req.path.endsWith('/health')) return next();
+    if (options.accounts && crossSite(c)) {
+      return c.json({ error: { code: 'forbidden', message: 'Cross-site request refused' } }, 403);
+    }
+    if (options.accounts && isPublicAuthPath(c.req.path)) return next();
     if (options.apiKey && c.req.header('Authorization') !== `Bearer ${options.apiKey}`) {
       return c.json({ error: { code: 'unauthorized', message: 'Missing or invalid API key' } }, 401);
     }
-    if (options.authenticate) {
-      const user = await options.authenticate(c.req.raw);
+    if (options.accounts || options.authenticate) {
+      const account = options.accounts ? await options.accounts.accountForToken(sessionToken(c)) : null;
+      const user = account ? Accounts.user(account) : ((await options.authenticate?.(c.req.raw)) ?? null);
       if (!user) return c.json({ error: { code: 'unauthorized', message: 'Sign in to continue' } }, 401);
       c.set('user', user);
     }
@@ -146,6 +161,8 @@ export function createServer(harness: Harness, options: ServerOptions = {}) {
     });
 
   api.get('/health', (c) => c.json({ ok: true }));
+
+  if (options.accounts) accountRoutes(api, options.accounts);
 
   api.get('/me', (c) => c.json({ user: c.get('user') }));
 
@@ -239,25 +256,14 @@ export function createServer(harness: Harness, options: ServerOptions = {}) {
     const query = (c.req.query('q') ?? '').trim().toLowerCase();
     if (query.length < 2) return c.json({ results: [] });
     const user = c.get('user');
-    const sessions = (await harness.store.list(user ? { owner: user.id } : {})).slice(0, 300);
-    const results: { sessionId: string; title?: string; messageId: string; role: string; snippet: string }[] = [];
-    for (const summary of sessions) {
+    const filter = user ? { owner: user.id } : {};
+    if (harness.store.search) return c.json({ results: await harness.store.search(query, filter, 30) });
+    // Stores without search: read the newest sessions one by one.
+    const results: SearchHit[] = [];
+    for (const summary of (await harness.store.list(filter)).slice(0, 300)) {
       const session = await harness.store.get(summary.id);
-      for (const message of session?.messages ?? []) {
-        if (message.role === 'tool') continue;
-        const text = message.parts.map((p) => (p.type === 'text' ? p.text : '')).join(' ');
-        const at = text.toLowerCase().indexOf(query);
-        if (at < 0) continue;
-        const start = Math.max(0, at - 60);
-        results.push({
-          sessionId: summary.id,
-          title: summary.title,
-          messageId: message.id,
-          role: message.role,
-          snippet: `${start > 0 ? '…' : ''}${text.slice(start, at + query.length + 80).replace(/\s+/g, ' ')}`,
-        });
-        break; // one hit per session is enough to find it
-      }
+      const hit = session?.messages.map((m) => searchHit(session, m, query)).find(Boolean);
+      if (hit) results.push(hit);
       if (results.length >= 30) break;
     }
     return c.json({ results });

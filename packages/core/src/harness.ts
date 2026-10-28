@@ -412,6 +412,26 @@ export class Harness {
     return true;
   }
 
+  /**
+   * For a clean exit (on SIGTERM, say): wait up to `timeoutMs` for running turns to finish,
+   * then stop the rest and wait for them to save. Resolves with how many were stopped.
+   */
+  async shutdown(timeoutMs = 30_000): Promise<number> {
+    const idle = async (deadline: number) => {
+      while (this.running.size && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    };
+    await idle(Date.now() + timeoutMs);
+    let stopped = 0;
+    for (const turn of this.turns.values()) {
+      if (!turn.done) {
+        turn.abort.abort();
+        stopped++;
+      }
+    }
+    await idle(Date.now() + 5_000);
+    return stopped;
+  }
+
   /** Whether a turn is running for this session right now. */
   isRunning(sessionId: string) {
     return this.running.has(sessionId);

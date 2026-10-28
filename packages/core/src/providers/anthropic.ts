@@ -19,6 +19,13 @@ export interface AnthropicOptions {
    * Anthropic's recommended fallback model in the same call (default true).
    */
   refusalFallback?: boolean;
+  /**
+   * Let Claude search the web. Runs on Anthropic's servers: no tool code, results
+   * arrive with the reply. `true`, or settings such as `{ maxUses: 5, allowedDomains: [...] }`.
+   */
+  webSearch?: boolean | { maxUses?: number; allowedDomains?: string[]; blockedDomains?: string[] };
+  /** Let Claude run code in Anthropic's sandbox (Python and shell), e.g. for maths and data. */
+  codeExecution?: boolean;
 }
 
 const DEFAULT_MODELS = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'];
@@ -33,6 +40,35 @@ export function supportsAdaptiveThinking(model: string): boolean {
   const version = Number(major) + Number(minor && minor.length <= 2 ? minor : 0) / 10;
   return family === 'haiku' ? version >= 5 : version >= 4.6;
 }
+
+/** The web search variant with dynamic filtering exists on Opus and Sonnet 4.6 and later. */
+export function supportsDynamicWebSearch(model: string): boolean {
+  return /^claude-(opus|sonnet)-/.test(model) && supportsAdaptiveThinking(model);
+}
+
+/** Anthropic-hosted tools for this request: web search and code execution. */
+function serverTools(model: string, options: AnthropicOptions): Anthropic.ToolUnion[] {
+  const tools: Anthropic.ToolUnion[] = [];
+  if (options.webSearch) {
+    const s = options.webSearch === true ? {} : options.webSearch;
+    const settings = {
+      ...(s.maxUses ? { max_uses: s.maxUses } : {}),
+      ...(s.allowedDomains ? { allowed_domains: s.allowedDomains } : {}),
+      ...(s.blockedDomains ? { blocked_domains: s.blockedDomains } : {}),
+    };
+    // The dynamic variant runs its own code sandbox; with code execution on too, use the basic one.
+    tools.push(
+      supportsDynamicWebSearch(model) && !options.codeExecution
+        ? { type: 'web_search_20260209', name: 'web_search', ...settings }
+        : { type: 'web_search_20250305', name: 'web_search', ...settings },
+    );
+  }
+  if (options.codeExecution) tools.push({ type: 'code_execution_20260521', name: 'code_execution' });
+  return tools;
+}
+
+/** A turn paused by the server's tool loop is resumed at most this many times. */
+const MAX_CONTINUATIONS = 5;
 
 /** Convert harness messages to Anthropic's format. Exported for tests. */
 export function toAnthropicMessages(messages: Message[], providerId = 'anthropic'): Anthropic.MessageParam[] {
@@ -116,50 +152,69 @@ export function anthropic(options: AnthropicOptions = {}): Provider {
         // Cache the stable prefix (tools, system prompt, earlier turns) automatically.
         cache_control: { type: 'ephemeral' },
       };
-      if (request.tools.length) {
-        params.tools = request.tools.map((t) => ({
+      const tools: Anthropic.ToolUnion[] = [
+        ...request.tools.map((t) => ({
           name: t.name,
           description: t.description,
           input_schema: t.inputSchema as Anthropic.Tool.InputSchema,
-        }));
-      }
+        })),
+        ...serverTools(request.model, options),
+      ];
+      if (tools.length) params.tools = tools;
       if (supportsAdaptiveThinking(request.model)) {
         params.thinking = { type: 'adaptive', display: options.showReasoning === false ? 'omitted' : 'summarized' };
       }
       if (options.effort) params.output_config = { effort: options.effort };
 
-      const stream =
+      const open = (p: Anthropic.MessageStreamParams) =>
         options.refusalFallback !== false && FALLBACK_MODELS.has(request.model)
           ? client.beta.messages.stream(
-              { ...params, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' } as BetaMessageStreamParams,
+              { ...p, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' } as BetaMessageStreamParams,
               { signal: request.signal },
             )
-          : client.messages.stream(params, { signal: request.signal });
+          : client.messages.stream(p, { signal: request.signal });
 
-      for await (const event of stream) {
-        if (event.type !== 'content_block_delta') continue;
-        if (event.delta.type === 'text_delta') yield { type: 'text_delta', text: event.delta.text };
-        if (event.delta.type === 'thinking_delta') yield { type: 'reasoning_delta', text: event.delta.thinking };
+      // Server tools (web search, code execution) run in a loop on Anthropic's side. When that
+      // loop pauses, send the reply so far back and the server picks up where it stopped.
+      const content: Anthropic.ContentBlock[] = [];
+      const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+      let message: Anthropic.Message;
+      for (let round = 0; ; round++) {
+        const stream = open(
+          round === 0 ? params : { ...params, messages: [...params.messages, { role: 'assistant', content: content as Anthropic.ContentBlockParam[] }] },
+        );
+        for await (const event of stream) {
+          if (event.type !== 'content_block_delta') continue;
+          if (event.delta.type === 'text_delta') yield { type: 'text_delta', text: event.delta.text };
+          if (event.delta.type === 'thinking_delta') yield { type: 'reasoning_delta', text: event.delta.thinking };
+        }
+        message = (await stream.finalMessage()) as Anthropic.Message;
+        content.push(...message.content);
+        usage.inputTokens += message.usage.input_tokens;
+        usage.outputTokens += message.usage.output_tokens;
+        usage.cacheReadTokens += message.usage.cache_read_input_tokens ?? 0;
+        usage.cacheWriteTokens += message.usage.cache_creation_input_tokens ?? 0;
+        if (message.stop_reason !== 'pause_turn' || round >= MAX_CONTINUATIONS || request.signal?.aborted) break;
       }
-      const message = await stream.finalMessage();
 
       const parts: Part[] = [];
-      for (const block of message.content) {
+      for (const block of content) {
         if (block.type === 'text') parts.push({ type: 'text', text: block.text });
         if (block.type === 'thinking' && block.thinking) parts.push({ type: 'reasoning', text: block.thinking });
+        // Only client tools: server tools already ran on Anthropic's side.
         if (block.type === 'tool_use') parts.push({ type: 'tool_call', id: block.id, name: block.name, input: block.input });
       }
       yield {
         type: 'done',
         parts,
         stopReason: stopReason(message.stop_reason),
-        native: message.content,
+        native: content,
         servedBy: message.model !== request.model ? message.model : undefined,
         usage: {
-          inputTokens: message.usage.input_tokens,
-          outputTokens: message.usage.output_tokens,
-          cacheReadTokens: message.usage.cache_read_input_tokens ?? undefined,
-          cacheWriteTokens: message.usage.cache_creation_input_tokens ?? undefined,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          cacheReadTokens: usage.cacheReadTokens || undefined,
+          cacheWriteTokens: usage.cacheWriteTokens || undefined,
         },
       };
     },

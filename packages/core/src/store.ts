@@ -11,6 +11,31 @@ export interface SessionFilter {
   owner?: string;
 }
 
+/** A message that matched a search. */
+export interface SearchHit {
+  sessionId: string;
+  title?: string;
+  messageId: string;
+  role: string;
+  snippet: string;
+}
+
+/** Find `query` in a message's text and cut a short snippet around it. */
+export function searchHit(session: { id: string; title?: string }, message: Message, query: string): SearchHit | undefined {
+  if (message.role === 'tool') return undefined;
+  const text = message.parts.map((p) => (p.type === 'text' ? p.text : '')).join(' ');
+  const at = text.toLowerCase().indexOf(query.toLowerCase());
+  if (at < 0) return undefined;
+  const start = Math.max(0, at - 60);
+  return {
+    sessionId: session.id,
+    title: session.title,
+    messageId: message.id,
+    role: message.role,
+    snippet: `${start > 0 ? '…' : ''}${text.slice(start, at + query.length + 80).replace(/\s+/g, ' ')}`,
+  };
+}
+
 export function matches(session: Pick<Session, 'owner'>, filter: SessionFilter = {}) {
   return filter.owner === undefined || session.owner === filter.owner;
 }
@@ -30,6 +55,8 @@ export interface SessionStore {
   /** Keep the first `count` messages and drop the rest. */
   truncate(id: string, count: number): Promise<Session>;
   delete(id: string): Promise<boolean>;
+  /** Optional fast search; without it the server reads sessions one by one. */
+  search?(query: string, filter?: SessionFilter, limit?: number): Promise<SearchHit[]>;
 }
 
 export function summarize({ messages, ...rest }: Session): SessionSummary {

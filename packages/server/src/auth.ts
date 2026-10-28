@@ -7,11 +7,13 @@ export interface User {
   id: string;
   name?: string;
   email?: string;
+  /** With accounts: 'admin' can invite and manage people. */
+  role?: 'admin' | 'member';
 }
 
 export type Authenticate = (request: Request) => User | null | Promise<User | null>;
 
-function bearer(request: Request): string | undefined {
+export function bearer(request: Request): string | undefined {
   const header = request.headers.get('Authorization') ?? '';
   return header.startsWith('Bearer ') ? header.slice(7).trim() : undefined;
 }

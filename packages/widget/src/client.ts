@@ -64,7 +64,36 @@ export interface User {
   id: string;
   name?: string;
   email?: string;
+  role?: 'admin' | 'member';
 }
+
+/** With built-in accounts: a person who can sign in. */
+export interface Account {
+  id: string;
+  email: string;
+  name: string;
+  role: 'admin' | 'member';
+  disabled: boolean;
+  createdAt: string;
+}
+
+export interface Invite {
+  id: string;
+  email?: string;
+  role: 'admin' | 'member';
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface AuthStatus {
+  /** False (or a 404) when the server has no built-in accounts. */
+  accounts: boolean;
+  /** A fresh server: the first person to sign up becomes the admin. */
+  setupRequired: boolean;
+  user: User | null;
+}
+
+type NewAccount = { name: string; email: string; password: string };
 
 export interface MemoryRecord {
   id: string;
@@ -93,6 +122,65 @@ export class HarnessClient {
 
   me() {
     return this.request<{ user: User | null }>('/me');
+  }
+
+  // Built-in accounts. Sign-in sets a cookie for browsers and returns a token for other clients.
+
+  authStatus() {
+    return this.request<AuthStatus>('/auth/status');
+  }
+
+  setup(account: NewAccount) {
+    return this.request<{ user: User; token: string }>('/auth/setup', { method: 'POST', body: JSON.stringify(account) });
+  }
+
+  login(email: string, password: string) {
+    return this.request<{ user: User; token: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+  }
+
+  logout() {
+    return this.request<void>('/auth/logout', { method: 'POST', body: '{}' });
+  }
+
+  changePassword(current: string, next: string) {
+    return this.request<void>('/auth/password', { method: 'POST', body: JSON.stringify({ current, next }) });
+  }
+
+  invite(token: string) {
+    return this.request<{ invite: Pick<Invite, 'email' | 'role' | 'expiresAt'> }>(`/auth/invites/${encodeURIComponent(token)}`);
+  }
+
+  acceptInvite(token: string, account: NewAccount) {
+    return this.request<{ user: User; token: string }>(`/auth/invites/${encodeURIComponent(token)}/accept`, {
+      method: 'POST',
+      body: JSON.stringify(account),
+    });
+  }
+
+  /** Admin only: people, and invite links. */
+  users() {
+    return this.request<{ users: Account[] }>('/admin/users');
+  }
+
+  updateUser(id: string, change: { disabled?: boolean; role?: 'admin' | 'member' }) {
+    return this.request<Account>(`/admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(change) });
+  }
+
+  deleteUser(id: string) {
+    return this.request<void>(`/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  invites() {
+    return this.request<{ invites: Invite[] }>('/admin/invites');
+  }
+
+  /** A new invite link token. It is shown only once, so share it right away. */
+  createInvite(options: { email?: string; role?: 'admin' | 'member' } = {}) {
+    return this.request<{ invite: Invite; token: string }>('/admin/invites', { method: 'POST', body: JSON.stringify(options) });
+  }
+
+  revokeInvite(id: string) {
+    return this.request<void>(`/admin/invites/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
   /** Stop the session's running reply. Closing a stream does not stop it. */

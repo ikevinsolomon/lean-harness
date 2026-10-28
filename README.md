@@ -29,7 +29,7 @@ pnpm install
 pnpm dev
 ```
 
-Open http://localhost:8787 for the web app: a full chat interface with a chat history sidebar, a link per chat, search (⌘K), rename and delete, copy, retry and edit, a model menu, light and dark themes, and a phone layout. http://localhost:8787/embed shows the embeddable widget on a page. Without any API key you get the offline **Mock** model, which echoes and can call tools with `/tool_name {"arg": "value"}`. To use real models, copy `examples/quickstart/.env.example` to `examples/quickstart/.env` and add a key, for example `ANTHROPIC_API_KEY`. Every provider with a key appears in the model menu.
+Open http://localhost:8787. The first visit asks you to create the admin account (email and password); after that, invite people from **People** in the sidebar. This is the web app: a full chat interface with a chat history sidebar, a link per chat, search (⌘K), rename and delete, copy, retry and edit, a model menu, light and dark themes, and a phone layout. http://localhost:8787/embed shows the embeddable widget on a page. Without any API key you get the offline **Mock** model, which echoes and can call tools with `/tool_name {"arg": "value"}`. To use real models, copy `examples/quickstart/.env.example` to `examples/quickstart/.env` and add a key, for example `ANTHROPIC_API_KEY`. Every provider with a key appears in the model menu.
 
 ## Build an agent in one file
 
@@ -176,7 +176,7 @@ MCP tools ask by default unless the server marks them read-only (`approval: 'unl
 
 ## HTTP API
 
-All routes are under `/v1`. With `authenticate`, every route needs a signed-in user and only shows that user's sessions.
+All routes are under `/v1`. With sign-in on (`accounts` or `authenticate`), every route except `/health` and the public `/auth/*` routes needs a signed-in user, and only shows that user's sessions.
 
 | Method | Path | |
 |---|---|---|
@@ -194,6 +194,13 @@ All routes are under `/v1`. With `authenticate`, every route needs a signed-in u
 | `GET` | `/search?q=` | Find messages in your sessions |
 | `GET`, `DELETE` | `/memories`, `/memories/:id` | What the assistant remembers about you (when `memory` is passed to `createServer`) |
 | `POST` | `/sessions/:id/approvals/:callId` | `{ approved, always? }`: allow or decline a tool call that is waiting |
+| `GET` | `/auth/status` | `{ accounts, setupRequired, user }` (with `accounts`) |
+| `POST` | `/auth/setup` | `{ name, email, password }`: create the admin account; works once, on a fresh server |
+| `POST` | `/auth/login`, `/auth/logout` | `{ email, password }` → `{ user, token }` plus an httpOnly cookie |
+| `POST` | `/auth/password` | `{ current, next }`: change your password; signs out your other devices |
+| `GET`, `POST` | `/auth/invites/:token`, `/auth/invites/:token/accept` | Look at an invite; accept it with `{ name, email, password }` |
+| `GET`, `PATCH`, `DELETE` | `/admin/users`, `/admin/users/:id` | Admin only: people; `{ disabled?, role? }` |
+| `GET`, `POST`, `DELETE` | `/admin/invites`, `/admin/invites/:id` | Admin only: open invites; `POST { email?, role? }` → `{ invite, token }` (the link is `/invite/<token>`) |
 | `POST` | `/sessions/:id/messages` | `{ content, model?, context?, files?, replaceFrom?, stream? }` → event stream, or JSON when `stream: false`. `replaceFrom` is a user message id: it and everything after it are replaced (retry, edit) |
 
 A turn streams as Server-Sent Events, one per event:
@@ -217,7 +224,17 @@ curl -N -X POST localhost:8787/v1/sessions/<id>/messages -H 'content-type: appli
 
 ## Users and sign-in
 
-Sign-in is off by default (single-user). Turn it on with `authenticate` in `createServer`; every session then belongs to its creator, people only see their own chats, and memory follows the user.
+Every session belongs to the person who made it: people see only their own chats, and memory follows the user. Pick how people sign in:
+
+**Built-in accounts** (the quickstart's default). Email and password, one admin, everyone else joins by invite link. The first visitor creates the admin account; the admin creates invite links under **People** (optionally locked to an email), turns accounts off and on, and makes other admins. Passwords are hashed with scrypt, sign-ins use an httpOnly cookie (or the returned token as `Bearer` for other clients), cross-site writes are refused, and repeated wrong passwords are slowed down.
+
+```ts
+import { Accounts, createServer } from '@lean-harness/server';
+
+createServer(harness, { accounts: new Accounts(db) }); // db: openSqlite(...) or postgresDb(pool)
+```
+
+**Your own sign-in.** Use `authenticate` with tokens, signed JWTs, or anything else:
 
 ```ts
 import { createServer, jwtAuth, tokenAuth } from '@lean-harness/server';
@@ -227,7 +244,7 @@ createServer(harness, { authenticate: jwtAuth({ secret: process.env.SUPABASE_JWT
 createServer(harness, { authenticate: async (req) => (await mySession(req)) ?? null }); // any sign-in system
 ```
 
-In the quickstart, set `HARNESS_USERS=asha:token1,ben:token2` in `.env`: the web app then shows a sign-in screen that takes an access token.
+In the quickstart, `HARNESS_USERS=asha:token1,ben:token2` switches to access tokens, and `AUTH=off` turns sign-in off (a single-user app on your own machine). When accounts are switched on for an existing install, chats made before belong to the admin.
 
 ## Storage
 
@@ -238,7 +255,7 @@ In the quickstart, set `HARNESS_USERS=asha:token1,ben:token2` in `.env`: the web
 | `await SqliteStore.open('chats.db')` | One server; uses Node's built-in SQLite |
 | `new PostgresStore(pool)` | Many servers; any client with `query()`: `pg`, Neon, Supabase, PGlite |
 
-The quickstart uses SQLite, or Postgres when `DATABASE_URL` is set. Implement `SessionStore` (seven methods) for anything else.
+The SQL stores share one connection (`openSqlite(file)` or `postgresDb(pool)`) with memory (`SqlMemory`) and accounts, so one database holds everything: `new SqlSessionStore(db)`. SQLite and Postgres stores also search messages in the database. The quickstart uses SQLite, or Postgres when `DATABASE_URL` is set. Implement `SessionStore` (seven methods) for anything else.
 
 ## Long conversations, budgets and timeouts
 
@@ -257,9 +274,11 @@ When a conversation would exceed `maxTokens`, older turns are summarised by the 
 
 Replies run on the server, not in the HTTP request: closing the tab does not stop them. `POST /sessions/:id/stop` stops one; `GET /sessions/:id/stream` reconnects (and replays the turn so far). In code: `harness.start`, `harness.watch`, `harness.stop`.
 
+On shutdown, `await harness.shutdown(20_000)` waits for replies in progress to finish, stops whatever is still running after that, and lets it save. The quickstart does this on Ctrl-C and SIGTERM (`docker compose down`, a deploy).
+
 ## Attachments
 
-Messages can carry images (PNG, JPEG, GIF, WebP), PDFs and text files: `files: [{ name, mediaType, data }]` (base64) on the API, or the paperclip, drag and drop, and paste in the web app. Claude reads images and PDFs natively; OpenAI-style providers get image URLs and file parts; text files reach every model as text.
+Messages can carry images (PNG, JPEG, GIF, WebP), PDFs and text files: `files: [{ name, mediaType, data }]` (base64) on the API, or the paperclip, drag and drop, and paste in the web app and the widget. Claude reads images and PDFs natively; OpenAI-style providers get image URLs and file parts; text files reach every model as text.
 
 ## Built-in tools
 
@@ -269,6 +288,12 @@ import { subagentTool, webFetchPlugin } from '@lean-harness/core';
 webFetchPlugin();          // fetch_url: reads public pages; private and local addresses are refused
 subagentTool({ name: 'researcher', description: 'Looks things up', providers, defaultModel: 'anthropic/claude-haiku-5-5' });
 await harness.extract(z.object({ city: z.string() }), 'I live in Pune'); // structured output: { city: 'Pune' }
+```
+
+Claude also has tools that run on Anthropic's servers, billed per use: web search and a code sandbox. Turn them on in the adapter, or with `CLAUDE_WEB_SEARCH=1` and `CLAUDE_CODE_EXECUTION=1` in the quickstart:
+
+```ts
+anthropic({ webSearch: { maxUses: 5 }, codeExecution: true });
 ```
 
 ## Tracing
@@ -282,7 +307,7 @@ docker compose up --build           # the app on :8787 with Postgres; reads exam
 docker build -t lean-harness .      # or just the image
 ```
 
-For production: set `HARNESS_USERS` (or your own `authenticate`), `CORS_ORIGIN`, `RATE_LIMIT_PER_MINUTE`, and `DATABASE_URL`; put it behind HTTPS.
+For production: put it behind HTTPS (the sign-in cookie is marked Secure there), create the admin account straight away, and set `CORS_ORIGIN`, `RATE_LIMIT_PER_MINUTE` and `DATABASE_URL`.
 
 ## Project layout
 
@@ -297,7 +322,7 @@ examples/         quickstart: a general assistant (clock tool, memory, a searcha
 ## Development
 
 ```bash
-pnpm test        # vitest
+pnpm test        # vitest: packages, plus the web app in jsdom
 pnpm typecheck
 pnpm build       # dist/ for every package
 ```
@@ -306,7 +331,8 @@ pnpm build       # dist/ for every package
 
 - Tool inputs are validated, but a tool is your code: check permissions inside it, and use `beforeToolCall` for approval gates.
 - Model output is untrusted. The widget renders Markdown through DOMPurify.
-- A token in `<lean-chat token>` is visible to the page's users. For public sites, use `authenticate` with your own sign-in, or a backend that adds credentials.
+- A token in `<lean-chat token>` is visible to the page's users. For public sites, serve the widget from the same site as the server so it uses the sign-in cookie, use `authenticate` with your own sign-in, or put a backend in front that adds credentials.
+- Invite links work once and expire after 7 days; anyone holding an unused link can join, so send them privately or lock them to an email.
 - `fetch_url` refuses private and local addresses, but DNS can change between the check and the request; run the server where the network itself blocks internal services if that matters to you.
 - Attachments and chats are stored as you send them. Treat the database as sensitive.
 

@@ -1,5 +1,5 @@
 # Lean Harness with Postgres: docker compose up --build
-# Put provider keys (and HARNESS_USERS for sign-in) in examples/quickstart/.env first.
+# Put provider keys in examples/quickstart/.env first. The first visitor creates the admin account.
 services:
   app:
     build: .
@@ -16,6 +16,8 @@ services:
     volumes:
       - app-data:/app/examples/quickstart/.data
     restart: unless-stopped
+    # Time for replies in progress to finish on `docker compose down` (the app waits up to 20s).
+    stop_grace_period: 30s
 
   db:
     image: postgres:17-alpine

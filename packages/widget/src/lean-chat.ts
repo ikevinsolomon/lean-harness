@@ -17,10 +17,27 @@ interface ToolCall {
 }
 
 type Item =
-  | { kind: 'user'; text: string; context: string[] }
+  | { kind: 'user'; text: string; context: string[]; files?: string[] }
   | { kind: 'assistant'; text: string; reasoning: string; streaming: boolean }
   | { kind: 'tools'; calls: ToolCall[] }
   | { kind: 'note'; text: string };
+
+type Attachment = { name: string; mediaType: string; data: string };
+
+const ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.csv,.json,.ts,.tsx,.js,.py,.yaml,.yml';
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+/** Read a file as base64. Text files without a type (.md, .ts...) are sent as plain text. */
+function readAttachment(file: File): Promise<Attachment> {
+  const mediaType =
+    file.type || (/\.(md|txt|csv|ts|tsx|js|jsx|py|go|rs|java|rb|sh|yaml|yml|toml|sql|html|css)$/i.test(file.name) ? 'text/plain' : 'application/octet-stream');
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ name: file.name, mediaType, data: String(reader.result).split(',')[1] ?? '' });
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
 
 const icon = {
   send: svg`<path d="M12 19V5M5 12l7-7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>`,
@@ -35,6 +52,7 @@ const icon = {
   right: svg`<path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
   down: svg`<path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
   plus: svg`<path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`,
+  clip: svg`<path d="M21 11.5l-8.6 8.6a5.5 5.5 0 01-7.8-7.8l8.6-8.6a3.7 3.7 0 015.2 5.2l-8.6 8.6a1.8 1.8 0 01-2.6-2.6l7.9-7.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`,
   page: svg`<path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3v5h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>`,
   menu: svg`<path d="M4 7h16M4 12h16M4 17h10" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>`,
   sidebar: svg`<rect x="3.5" y="4.5" width="17" height="15" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9.5 4.5v15" fill="none" stroke="currentColor" stroke-width="1.8"/>`,
@@ -104,6 +122,7 @@ function toItems(messages: Message[]): Item[] {
         kind: 'user',
         text: m.parts.map((p) => (p.type === 'text' ? p.text : '')).join(''),
         context: m.parts.flatMap((p) => (p.type === 'context' ? [p.label] : [])),
+        files: m.parts.flatMap((p) => (p.type === 'file' ? [p.name] : [])),
       });
     } else if (m.role === 'assistant') {
       const text = m.parts.map((p) => (p.type === 'text' ? p.text : '')).join('');
@@ -157,6 +176,7 @@ export class LeanChat extends LitElement {
     busy: { state: true },
     error: { state: true },
     draft: { state: true },
+    files: { state: true },
     asking: { state: true },
   };
 
@@ -191,6 +211,7 @@ export class LeanChat extends LitElement {
   declare private busy: boolean;
   declare private error: string;
   declare private draft: string;
+  declare private files: Attachment[];
   /** Tool calls waiting for the user to allow or decline them. */
   declare private asking: Set<string>;
 
@@ -227,6 +248,7 @@ export class LeanChat extends LitElement {
     this.busy = false;
     this.error = '';
     this.draft = '';
+    this.files = [];
     this.asking = new Set();
   }
 
@@ -349,14 +371,16 @@ export class LeanChat extends LitElement {
 
   /** Send a message as if the user typed it. */
   async send(text: string) {
-    const content = text.trim();
+    const files = this.files;
+    const content = text.trim() || (files.length ? 'Please look at the attached file.' : '');
     if (!content || this.busy) return;
     const context = this.activeContext();
     this.error = '';
     this.draft = '';
+    this.files = [];
     const area = this.renderRoot.querySelector('textarea');
     if (area) area.style.height = 'auto';
-    this.items = [...this.items, { kind: 'user', text: content, context: Object.keys(context) }];
+    this.items = [...this.items, { kind: 'user', text: content, context: Object.keys(context), files: files.map((f) => f.name) }];
     this.notes = [];
     this.busy = true;
     this.abort = new AbortController();
@@ -366,7 +390,7 @@ export class LeanChat extends LitElement {
         this.sessionId = session.id;
         safeStorage(() => localStorage.setItem(this.storageKey, session.id));
       }
-      for await (const event of this.client.send(this.sessionId, content, { context, signal: this.abort.signal })) {
+      for await (const event of this.client.send(this.sessionId, content, { context, files: files.length ? files : undefined, signal: this.abort.signal })) {
         this.apply(event);
       }
     } catch (error) {
@@ -380,6 +404,15 @@ export class LeanChat extends LitElement {
       this.focusInput();
       void this.refreshSessions();
     }
+  }
+
+  /** Attach files (images, PDFs, text) to the next message. Up to 10, 10 MB each. */
+  async attach(list: FileList | File[]) {
+    const chosen = [...list];
+    const tooBig = chosen.find((f) => f.size > MAX_FILE_BYTES);
+    if (tooBig) this.error = `${tooBig.name} is larger than 10 MB`;
+    const read = await Promise.all(chosen.filter((f) => f.size <= MAX_FILE_BYTES).map(readAttachment));
+    this.files = [...this.files, ...read].slice(0, 10);
   }
 
   /** Stop the reply. Replies run on the server, so closing the stream alone would not stop it. */
@@ -459,6 +492,14 @@ export class LeanChat extends LitElement {
 
   private focusInput() {
     void this.updateComplete.then(() => this.renderRoot.querySelector('textarea')?.focus());
+  }
+
+  private onPaste(e: ClipboardEvent) {
+    const pasted = [...(e.clipboardData?.files ?? [])];
+    if (pasted.length) {
+      e.preventDefault();
+      void this.attach(pasted);
+    }
   }
 
   private onKeydown(e: KeyboardEvent) {
@@ -644,6 +685,7 @@ export class LeanChat extends LitElement {
         reply = [];
         turns.push(html`<div class="turn user">
           ${item.context.length ? html`<span class="attached">${svgIcon(icon.page, 12)}With ${item.context.join(', ')}</span>` : nothing}
+          ${item.files?.length ? html`<span class="attached">${svgIcon(icon.clip, 12)}${item.files.join(', ')}</span>` : nothing}
           <div class="bubble">${item.text}</div>
         </div>`);
       } else reply.push(this.renderItem(item));
@@ -723,8 +765,23 @@ export class LeanChat extends LitElement {
           ? 'Writing…'
           : 'Thinking…';
     const canAddPage = this.pageContext ? this.dismissed.has('Page') : true;
-    return html`<form @submit=${(e: Event) => (e.preventDefault(), this.send(this.draft))}>
+    return html`<form @submit=${(e: Event) => (e.preventDefault(), this.send(this.draft))}
+      @dragover=${(e: DragEvent) => e.preventDefault()}
+      @drop=${(e: DragEvent) => {
+        e.preventDefault();
+        if (e.dataTransfer?.files.length) void this.attach(e.dataTransfer.files);
+      }}>
       <div class="composer">
+        ${this.files.length
+          ? html`<div class="chips">
+              ${this.files.map(
+                (f, i) => html`<span class="chip">${svgIcon(icon.clip, 14)}<span>${f.name}</span>
+                  <button type="button" aria-label=${`Remove ${f.name}`} @click=${() => (this.files = this.files.filter((_, j) => j !== i))}>
+                    ${svgIcon(icon.closeSmall, 12)}
+                  </button></span>`,
+              )}
+            </div>`
+          : nothing}
         ${keys.length
           ? html`<div class="chips">
               ${keys.map(
@@ -737,8 +794,15 @@ export class LeanChat extends LitElement {
           : nothing}
         <label class="sr-only" for="message">Message</label>
         <textarea id="message" rows="1" placeholder=${this.placeholder || (this.mode === 'page' && !this.items.length ? `Ask ${this.heading} anything…` : `Message ${this.heading}…`)} .value=${this.draft}
-          @input=${this.onInput} @keydown=${this.onKeydown}></textarea>
+          @input=${this.onInput} @keydown=${this.onKeydown} @paste=${this.onPaste}></textarea>
+        <input type="file" multiple hidden accept=${ACCEPT} @change=${(e: Event) => {
+          const input = e.target as HTMLInputElement;
+          if (input.files?.length) void this.attach(input.files);
+          input.value = '';
+        }} />
         <div class="toolbar">
+          <button type="button" class="tool-button" title="Attach files" aria-label="Attach files"
+            @click=${() => this.renderRoot.querySelector<HTMLInputElement>('input[type=file]')?.click()}>${svgIcon(icon.clip, 16)}</button>
           ${canAddPage
             ? html`<button type="button" class="tool-button" title="Attach this page" aria-label="Attach this page"
                 @click=${() => {
@@ -753,7 +817,7 @@ export class LeanChat extends LitElement {
               : nothing}
           ${this.busy
             ? html`<button type="button" class="send stop" aria-label="Stop" @click=${() => this.stop()}>${svgIcon(icon.stop, 12)}</button>`
-            : html`<button type="submit" class="send" aria-label="Send" ?disabled=${!this.draft.trim()}>${svgIcon(icon.send, 16)}</button>`}
+            : html`<button type="submit" class="send" aria-label="Send" ?disabled=${!this.draft.trim() && !this.files.length}>${svgIcon(icon.send, 16)}</button>`}
         </div>
       </div>
       ${this.disclaimer ? html`<p class="disclaimer">${this.disclaimer}</p>` : nothing}

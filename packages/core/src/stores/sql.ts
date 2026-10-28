@@ -1,5 +1,6 @@
-import type { SessionFilter, SessionPatch, SessionStore, SessionSummary } from '../store.js';
+import { searchHit, type SearchHit, type SessionFilter, type SessionPatch, type SessionStore, type SessionSummary } from '../store.js';
 import type { Message, Session } from '../types.js';
+import { isoDate as iso, openSqlite, parseJson as json, postgresDb, type PostgresClient, type Row, type SqlDb } from './db.js';
 
 /**
  * Sessions in a SQL database: SQLite (built into Node) or Postgres (any client with
@@ -7,21 +8,11 @@ import type { Message, Session } from '../types.js';
  * Two tables: `lh_sessions` and `lh_messages`, one row per message, created on first use.
  */
 
-type Row = Record<string, unknown>;
-
-interface Dialect {
-  /** Run a statement; `?` placeholders are rewritten for the database. */
-  query(sql: string, params?: unknown[]): Promise<Row[]>;
-  json: string;
-}
-
-const json = (value: unknown) => (typeof value === 'string' ? JSON.parse(value) : value);
-const iso = (value: unknown) => (value instanceof Date ? value.toISOString() : String(value));
-
-class SqlStore implements SessionStore {
+/** Sessions in any `SqlDb`. `SqliteStore` and `PostgresStore` are shortcuts that open the connection. */
+export class SqlSessionStore implements SessionStore {
   private ready?: Promise<void>;
 
-  constructor(private readonly db: Dialect) {}
+  constructor(private readonly db: SqlDb) {}
 
   private init() {
     this.ready ??= (async () => {
@@ -116,6 +107,31 @@ class SqlStore implements SessionStore {
     return existed;
   }
 
+  /** Messages containing `query` (case-insensitive), one hit per session, newest sessions first. */
+  async search(query: string, filter: SessionFilter = {}, limit = 30): Promise<SearchHit[]> {
+    const like = `%${query.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const text = this.db.dialect === 'postgres' ? 'm.data::text ILIKE ?' : "m.data LIKE ? ESCAPE '\\'";
+    const owner = filter.owner !== undefined ? 'AND s.owner = ?' : '';
+    const rows = await this.q(
+      `SELECT s.id, s.title, m.data FROM lh_messages m JOIN lh_sessions s ON s.id = m.session_id
+       WHERE ${text} ${owner} ORDER BY s.updated_at DESC, m.seq LIMIT 500`,
+      filter.owner !== undefined ? [like, filter.owner] : [like],
+    );
+    const hits: SearchHit[] = [];
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const id = String(row.id);
+      if (seen.has(id)) continue;
+      // The JSON match may be in a field that is not the visible text; check properly.
+      const hit = searchHit({ id, title: row.title != null ? String(row.title) : undefined }, json(row.data) as Message, query);
+      if (!hit) continue;
+      seen.add(id);
+      hits.push(hit);
+      if (hits.length >= limit) break;
+    }
+    return hits;
+  }
+
   private async require(id: string) {
     const session = await this.get(id);
     if (!session) throw new Error(`Session ${id} not found`);
@@ -123,47 +139,17 @@ class SqlStore implements SessionStore {
   }
 }
 
-/** A Postgres client: node-postgres `Pool`, PGlite, or anything with the same `query`. */
-export interface PostgresClient {
-  query(text: string, params?: unknown[]): Promise<{ rows: Row[] }>;
-}
-
 /** Sessions in Postgres. Pass your own client: `new PostgresStore(new pg.Pool({ connectionString }))`. */
-export class PostgresStore extends SqlStore {
+export class PostgresStore extends SqlSessionStore {
   constructor(client: PostgresClient) {
-    super({
-      json: 'JSONB',
-      async query(sql, params = []) {
-        let n = 0;
-        return (await client.query(sql.replace(/\?/g, () => `$${++n}`), params)).rows;
-      },
-    });
+    super(postgresDb(client));
   }
 }
 
 /** Sessions in a SQLite file, using Node's built-in SQLite. Good for one server; no extra install. */
-export class SqliteStore extends SqlStore {
+export class SqliteStore extends SqlSessionStore {
   /** `await SqliteStore.open('data/lean-harness.db')`, or `':memory:'`. */
   static async open(file = ':memory:') {
-    const { DatabaseSync } = await import('node:sqlite');
-    if (file !== ':memory:') {
-      const { mkdir } = await import('node:fs/promises');
-      const { dirname } = await import('node:path');
-      await mkdir(dirname(file), { recursive: true });
-    }
-    const db = new DatabaseSync(file);
-    db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
-    return new SqliteStore({
-      json: 'TEXT',
-      async query(sql, params = []) {
-        const statement = db.prepare(sql);
-        const args = params as (string | number | null)[];
-        return /^\s*(SELECT|WITH)/i.test(sql) ? (statement.all(...args) as Row[]) : (statement.run(...args), []);
-      },
-    });
-  }
-
-  private constructor(dialect: Dialect) {
-    super(dialect);
+    return new SqliteStore(await openSqlite(file));
   }
 }

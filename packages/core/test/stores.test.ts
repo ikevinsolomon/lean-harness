@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, describe, expect, it } from 'vitest';
-import { FileStore, MemoryStore, PostgresStore, SqliteStore, type Message, type Session, type SessionStore } from '../src/index.js';
+import { FileStore, MemoryStore, openSqlite, PostgresStore, postgresDb, SqlMemory, SqliteStore, type Message, type Session, type SessionStore } from '../src/index.js';
 
 const dirs: string[] = [];
 afterAll(() => Promise.all(dirs.map((d) => rm(d, { recursive: true, force: true }))));
@@ -68,5 +68,34 @@ describe.each(stores)('%s', (_, open) => {
     expect(alice.map((s) => s.id)).toEqual(['a1', 'a2']);
     expect(alice[0]).toMatchObject({ messageCount: 1 });
     expect(await store.list({ owner: 'nobody' })).toEqual([]);
+  });
+});
+
+describe.each(stores.filter(([n]) => n.startsWith('Sqlite') || n.startsWith('Postgres')))('%s search', (_, open) => {
+  it('finds message text, per owner, ignoring JSON field names', async () => {
+    const store = (await open()) as SessionStore & Required<Pick<SessionStore, 'search'>>;
+    await store.create(session('a', 'alice'));
+    await store.create(session('b', 'bob'));
+    await store.append('a', [msg('m1', 'Plan the Lisbon offsite 100% for real')]);
+    await store.append('b', [msg('m2', 'lisbon is lovely')]);
+    expect((await store.search('lisbon', { owner: 'alice' })).map((h) => h.sessionId)).toEqual(['a']);
+    expect((await store.search('LISBON')).map((h) => h.sessionId).sort()).toEqual(['a', 'b']);
+    expect(await store.search('100%')).toHaveLength(1);
+    expect(await store.search('parts')).toEqual([]); // a JSON key, not text
+  });
+});
+
+describe.each([
+  ['SqlMemory (SQLite)', async () => new SqlMemory(await openSqlite())],
+  ['SqlMemory (Postgres)', async () => new SqlMemory(postgresDb(new PGlite()))],
+] as const)('%s', (_, open) => {
+  it('adds, lists per scope, and removes memories', async () => {
+    const memory = await open();
+    const a = await memory.add('asha', 'Works in Pune');
+    await memory.add('ben', 'Likes tea');
+    expect((await memory.list('asha')).map((m) => m.text)).toEqual(['Works in Pune']);
+    expect(await memory.remove('ben', a.id)).toBe(false);
+    expect(await memory.remove('asha', a.id)).toBe(true);
+    expect(await memory.list('asha')).toEqual([]);
   });
 });

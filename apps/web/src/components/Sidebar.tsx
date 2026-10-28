@@ -3,7 +3,7 @@ import { Link, useMatch, useNavigate } from 'react-router';
 import { api, groupByDate, mod, type SessionSummary } from '../lib';
 import { useApp } from '../store';
 import { ConfirmDialog } from './Dialog';
-import { Brain, Edit, More, NewChat, Search, Settings, SignOut, Sidebar as SidebarIcon, Trash } from './Icons';
+import { Brain, Edit, More, NewChat, People, Search, Settings, SignOut, Sidebar as SidebarIcon, Trash } from './Icons';
 import { Popover } from './Popover';
 
 function ChatRow({ session, active }: { session: SessionSummary; active: boolean }) {
@@ -106,6 +106,12 @@ export function Sidebar() {
           Search chats
           <span className="kbd">{mod} K</span>
         </button>
+        {user?.role === 'admin' && (
+          <button className="side-action" onClick={() => (setDrawer(false), setDialog('people'))}>
+            <People size={17} />
+            People
+          </button>
+        )}
       </nav>
       <div className="history">
         {sessions.length ? (
