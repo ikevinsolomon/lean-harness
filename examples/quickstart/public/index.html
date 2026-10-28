@@ -3,7 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>lean-harness quickstart</title>
+    <title>Lean Harness quickstart</title>
+    <link rel="icon" href="/logo.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
     <script type="module" src="/lean-chat.js"></script>
@@ -62,17 +63,19 @@
         color: var(--text);
       }
       ul { color: var(--muted); padding-left: 20px; }
+      .brand { display: inline-flex; align-items: center; gap: 10px; }
+      .brand img { border-radius: 8px; }
       lean-chat { height: min(720px, calc(100vh - 96px)); box-shadow: 0 24px 64px -24px rgb(23 23 40 / 0.25); border-radius: 18px; }
     </style>
   </head>
   <body>
     <main>
       <section>
-        <span class="tag">lean-harness · quickstart</span>
+        <span class="brand"><img src="/logo.svg" alt="" width="32" height="32" /><span class="tag">lean harness · quickstart</span></span>
         <h1>An agent you can drop into any page.</h1>
         <p>
-          This is the example <b>Taskmate</b> domain: one plugin with three task tools and one with a clock.
-          Switch models from the menu at any time, even mid-conversation.
+          This demo is a small task-tracking domain: task tools, a clock, long-term memory and a searchable
+          planning guide. Switch models from the menu at any time, even mid-conversation.
         </p>
         <p>Embed the same chat anywhere with two lines:</p>
         <pre>&lt;script type="module" src="https://your-server/lean-chat.js"&gt;&lt;/script&gt;
@@ -85,7 +88,8 @@
         </ul>
       </section>
       <lean-chat
-        heading="Taskmate"
+        heading="Lean Harness"
+        icon="/logo.svg"
         subtitle="Your tasks, organised"
         greeting="What should we get done?"
         page-context

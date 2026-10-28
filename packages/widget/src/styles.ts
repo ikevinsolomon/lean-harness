@@ -159,6 +159,10 @@ export const styles = css`
     color: var(--lc-bg);
     background: var(--lc-ink);
   }
+  img.mark {
+    object-fit: cover;
+    background: none;
+  }
   .titles {
     flex: 1;
     min-width: 0;

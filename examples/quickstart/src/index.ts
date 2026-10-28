@@ -55,7 +55,7 @@ const harness = createHarness({
     knowledgePlugin({ dir: here('../knowledge'), description: 'how this team plans and prioritises work' }),
   ],
   defaultModel,
-  instructions: 'You are Taskmate, a friendly assistant that keeps the user organised. Be brief.',
+  instructions: 'You are Lean Harness, a friendly assistant that keeps the user organised. Be brief.',
   store: new FileStore(here('../.data/sessions')),
 });
 
@@ -70,6 +70,9 @@ app.get('/lean-chat.js', async (c) => {
     return c.text('Build the widget first: pnpm --filter @lean-harness/widget build', 404);
   }
 });
+app.get('/logo.svg', async (c) =>
+  c.body(await readFile(here('../../../assets/logo.svg'), 'utf8'), 200, { 'Content-Type': 'image/svg+xml' }),
+);
 app.get('/', async (c) => c.html(await readFile(here('../public/index.html'), 'utf8')));
 
 serve(app);

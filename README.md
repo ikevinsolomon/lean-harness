@@ -1,4 +1,6 @@
-# lean-harness
+<p align="center"><img src="assets/logo.svg" width="96" height="96" alt="lean-harness logo: a double cup"></p>
+
+<h1 align="center">lean-harness</h1>
 
 **A small, readable agent harness for TypeScript.** Any model, your tools, an HTTP API, and a chat UI you can drop into any page.
 
@@ -80,6 +82,7 @@ const { text } = await harness.send(session.id, 'And tomorrow?', { model: 'ollam
 | `token` | | Sent as `Authorization: Bearer …` |
 | `model` | server default | Starting `provider/model` |
 | `heading`, `subtitle`, `greeting`, `placeholder`, `disclaimer` | | Text |
+| `icon` | first letter of `heading` | Image URL for the header mark |
 | `suggestions` | | Starter cards: `Title: detail \| Title: detail` |
 | `page-context` | off | Attach the current page (title and URL) to every message |
 | `mode` | `inline` | `inline` fills its container; `floating` is a launcher button in the corner |

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="lean-harness">
+  <rect width="64" height="64" rx="15" fill="#17151c"/>
+  <!-- straw -->
+  <path d="M35.5 16 L43 5.5" stroke="#c084fc" stroke-width="3" stroke-linecap="round"/>
+  <!-- outer cup -->
+  <path d="M16.6 25 L47.4 25 L43.4 55 Q32 58.4 20.6 55 Z" fill="#f5f2ec"/>
+  <path d="M32 25 L47.4 25 L43.4 55 Q37.8 56.7 32 56.9 Z" fill="#e3ddd2"/>
+  <!-- inner cup, riding above the outer rim -->
+  <path d="M17 16.5 L47 16.5 L46.1 25 L17.9 25 Z" fill="#fbf9f5"/>
+  <path d="M32 16.5 L47 16.5 L46.1 25 L32 25 Z" fill="#ebe6dc"/>
+  <!-- outer rim lip -->
+  <ellipse cx="32" cy="25" rx="15.6" ry="2.6" fill="#ffffff"/>
+  <ellipse cx="32" cy="25" rx="15.6" ry="2.6" fill="none" stroke="#d6cfc2" stroke-width="0.8"/>
+  <!-- inner rim and the purple -->
+  <ellipse cx="32" cy="16.5" rx="15" ry="3.4" fill="#ffffff"/>
+  <ellipse cx="32" cy="16.6" rx="12.8" ry="2.4" fill="#7c3aed"/>
+  <ellipse cx="29" cy="16" rx="5" ry="0.9" fill="#a78bfa" opacity="0.8"/>
+  <path d="M35.5 16 L37.2 13.6" stroke="#c084fc" stroke-width="3" stroke-linecap="round"/>
+</svg>

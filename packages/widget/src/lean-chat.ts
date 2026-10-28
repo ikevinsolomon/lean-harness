@@ -109,7 +109,7 @@ function toItems(messages: Message[]): Item[] {
 /**
  * <lean-chat endpoint="https://your-server"></lean-chat>
  *
- * Attributes: endpoint, token, model, heading, subtitle, greeting, placeholder,
+ * Attributes: endpoint, token, model, heading, icon, subtitle, greeting, placeholder,
  * suggestions ("Title: detail | Title: detail"), disclaimer, mode ("inline" | "floating"),
  * theme ("auto" | "light" | "dark"), page-context, hide-model-picker, hide-reasoning.
  * Property: `context`, an object sent with every message ({ "Record": "Order 4411" }).
@@ -124,6 +124,7 @@ export class LeanChat extends LitElement {
     token: { type: String },
     model: { type: String, reflect: true },
     heading: { type: String },
+    icon: { type: String },
     subtitle: { type: String },
     greeting: { type: String },
     placeholder: { type: String },
@@ -151,6 +152,8 @@ export class LeanChat extends LitElement {
   declare token: string | undefined;
   declare model: string;
   declare heading: string;
+  /** Image URL for the header mark; without it the mark shows the heading's first letter. */
+  declare icon: string;
   declare subtitle: string;
   declare greeting: string;
   declare placeholder: string;
@@ -181,6 +184,7 @@ export class LeanChat extends LitElement {
     this.endpoint = '';
     this.model = '';
     this.heading = 'Assistant';
+    this.icon = '';
     this.subtitle = '';
     this.greeting = 'How can I help?';
     this.placeholder = '';
@@ -440,7 +444,9 @@ export class LeanChat extends LitElement {
           </label>`
         : html`<span class="model static" title="Model">${dot}<span class="name">${current?.label ?? this.model}</span></span>`;
     return html`<header>
-      <div class="mark" aria-hidden="true">${this.heading.trim().charAt(0).toUpperCase()}</div>
+      ${this.icon
+        ? html`<img class="mark" src=${this.icon} alt="" />`
+        : html`<div class="mark" aria-hidden="true">${this.heading.trim().charAt(0).toUpperCase()}</div>`}
       <div class="titles">
         <div class="title">${this.heading}</div>
         ${this.subtitle ? html`<div class="subtitle">${this.subtitle}</div>` : nothing}
