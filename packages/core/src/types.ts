@@ -41,7 +41,15 @@ export interface ContextPart {
   text: string;
 }
 
-export type Part = TextPart | ContextPart | ReasoningPart | ToolCallPart | ToolResultPart;
+/** A file the user attached: an image, a PDF, or a text file. `data` is base64. */
+export interface FilePart {
+  type: 'file';
+  name: string;
+  mediaType: string;
+  data: string;
+}
+
+export type Part = TextPart | ContextPart | FilePart | ReasoningPart | ToolCallPart | ToolResultPart;
 
 export interface Usage {
   inputTokens?: number;
@@ -86,6 +94,8 @@ export type StopReason =
   | 'max_tokens'
   | 'refusal'
   | 'max_steps'
+  /** A token budget (per reply or per session) ran out. */
+  | 'budget'
   | 'aborted'
   | 'error'
   | 'other';

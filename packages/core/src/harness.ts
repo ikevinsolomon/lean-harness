@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { HookContext, Plugin } from './plugin.js';
+import { cutPoint, estimateTokens, SUMMARY_PROMPT, summaryMessage, transcript, type ContextOptions, type Summary } from './context.js';
 import { MemoryStore, type SessionPatch, type SessionStore } from './store.js';
 import { toolOutputText, toolSpec, type Tool } from './tool.js';
 import type {
+  FilePart,
   HarnessEvent,
   Message,
   ModelInfo,
@@ -30,6 +32,12 @@ export interface HarnessOptions {
   maxSteps?: number;
   /** How long a tool call waits for someone to allow it before it counts as declined (default 10 minutes). */
   approvalTimeoutMs?: number;
+  /** How long one tool call may run before it fails (default 2 minutes). */
+  toolTimeoutMs?: number;
+  /** Summarise older turns when a conversation gets too long for the model. On by default; `false` turns it off. */
+  context?: ContextOptions | false;
+  /** Token limits (input, output and cached tokens together) per reply and per session. */
+  budget?: { turnTokens?: number; sessionTokens?: number };
 }
 
 export interface RunOptions {
@@ -46,6 +54,8 @@ export interface RunOptions {
    * are removed before this turn, so the new message takes its place.
    */
   replaceFrom?: string;
+  /** Files attached to this message (images, PDFs, text). */
+  files?: FilePart[];
 }
 
 function contextParts(context: Record<string, unknown> = {}): Part[] {
@@ -85,6 +95,10 @@ export function parseModelId(id: string): { provider: string; model: string } {
 
 const now = () => new Date().toISOString();
 
+function totalTokens(u: Usage = {}) {
+  return (u.inputTokens ?? 0) + (u.outputTokens ?? 0) + (u.cacheReadTokens ?? 0) + (u.cacheWriteTokens ?? 0);
+}
+
 function addUsage(total: Usage, add: Usage = {}): Usage {
   const sum = (a?: number, b?: number) => (a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0));
   return {
@@ -105,6 +119,9 @@ export class Harness {
   private readonly instructions: string;
   private readonly running = new Set<string>();
   private readonly approvalTimeoutMs: number;
+  private readonly toolTimeoutMs: number;
+  private readonly context: Required<ContextOptions> | false;
+  private readonly budget: { turnTokens?: number; sessionTokens?: number };
   /** Tool calls waiting for a decision, by `sessionId:callId`. */
   private readonly pending = new Map<string, (approved: boolean) => void>();
   /** Turns running in the background, by session, with every event so far. */
@@ -117,6 +134,9 @@ export class Harness {
     this.maxSteps = options.maxSteps ?? 12;
     this.instructions = options.instructions ?? 'You are a helpful assistant.';
     this.approvalTimeoutMs = options.approvalTimeoutMs ?? 10 * 60_000;
+    this.toolTimeoutMs = options.toolTimeoutMs ?? 2 * 60_000;
+    this.context = options.context === false ? false : { maxTokens: 150_000, keepRecent: 12, ...options.context };
+    this.budget = options.budget ?? {};
     for (const plugin of this.plugins) {
       for (const provider of plugin.providers ?? []) {
         if (this.providers.has(provider.id)) throw new Error(`Two plugins register provider "${provider.id}"`);
@@ -175,7 +195,9 @@ export class Harness {
   async updateSession(id: string, patch: SessionPatch) {
     await this.getSession(id);
     if (patch.model) this.requireProvider(patch.model);
-    return this.store.update(id, patch);
+    // Only the fields given; an undefined field must not wipe the stored one.
+    const changes = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) as SessionPatch;
+    return this.store.update(id, changes);
   }
 
   /**
@@ -216,19 +238,27 @@ export class Harness {
     try {
       yield await emit({ type: 'turn_start', sessionId, model: modelId });
       if (!session.title) session = await this.store.update(sessionId, { title: input.trim().slice(0, 80) });
-      yield await append({
+      const userMessage: Message = {
         id: randomUUID(),
         role: 'user',
-        parts: [...contextParts(options.context), { type: 'text', text: input }],
+        parts: [...(options.files ?? []), ...contextParts(options.context), { type: 'text', text: input }],
         createdAt: now(),
-      });
+      };
+      yield await append(userMessage);
 
-      while (steps < this.maxSteps) {
+      const spent = totalTokens(session.metadata.usage as Usage | undefined);
+      if (this.budget.sessionTokens && spent >= this.budget.sessionTokens) {
+        stopReason = 'budget';
+        yield await emit({ type: 'error', message: 'This conversation has used its token budget. Start a new chat to continue.' });
+      }
+
+      while (stopReason !== 'budget' && steps < this.maxSteps) {
         steps++;
+        const system = await this.systemPrompt(context());
         const request: ModelRequest = {
           model,
-          system: await this.systemPrompt(context()),
-          messages: session.messages,
+          system,
+          messages: await this.window(sessionId, session, userMessage.id, provider, model, system, steps === 1, signal),
           tools: this.listTools(),
           signal,
         };
@@ -261,6 +291,11 @@ export class Harness {
         const calls = done.parts.filter((p): p is ToolCallPart => p.type === 'tool_call');
         if (calls.length === 0 || done.stopReason === 'refusal') {
           stopReason = done.stopReason === 'tool_calls' ? 'end' : done.stopReason;
+          break;
+        }
+        if (this.budget.turnTokens && totalTokens(usage) >= this.budget.turnTokens) {
+          stopReason = 'budget';
+          yield await emit({ type: 'error', message: 'This reply used its token budget before finishing.' });
           break;
         }
         if (done.stopReason === 'max_tokens') {
@@ -300,6 +335,7 @@ export class Harness {
       if (!signal.aborted) yield await emit({ type: 'error', message: error instanceof Error ? error.message : String(error) });
     } finally {
       this.running.delete(sessionId);
+      await this.recordUsage(sessionId, usage).catch(() => undefined);
     }
     yield await emit({ type: 'turn_end', stopReason, usage, steps });
   }
@@ -417,6 +453,81 @@ export class Harness {
     return sections.join('\n\n');
   }
 
+  /**
+   * The messages to send. Long conversations get their older turns replaced by a summary
+   * (only ever at the start of a reply). Once summarised, earlier replies are sent without
+   * provider-native data such as thinking blocks, which are only valid with the exact
+   * history they were written for.
+   */
+  private async window(
+    sessionId: string,
+    session: Session,
+    turnStart: string,
+    provider: Provider,
+    model: string,
+    system: string,
+    mayCompact: boolean,
+    signal: AbortSignal,
+  ): Promise<Message[]> {
+    if (!this.context) return session.messages;
+    const { maxTokens, keepRecent } = this.context;
+    let summary = session.metadata.summary as Summary | undefined;
+    let from = summary ? session.messages.findIndex((m) => m.id === summary!.upTo) + 1 : 0;
+    if (from === 0) summary = undefined; // the summarised part was cut away by a retry or edit
+
+    const build = (s: Summary | undefined, start: number) => {
+      const kept = session.messages.slice(start);
+      if (!s) return kept;
+      const current = kept.findIndex((m) => m.id === turnStart);
+      return [summaryMessage(s), ...kept.map((m, i) => (i < current ? { ...m, native: undefined } : m))];
+    };
+
+    let messages = build(summary, from);
+    if (!mayCompact || estimateTokens(messages, system) <= maxTokens) return messages;
+
+    const rest = session.messages.slice(from);
+    const cut = cutPoint(rest, keepRecent);
+    if (cut <= 0) return messages;
+    const old = rest.slice(0, cut);
+    const text = await this.complete(provider, {
+      model,
+      system: SUMMARY_PROMPT,
+      tools: [],
+      signal,
+      messages: [
+        {
+          id: 'summarise',
+          role: 'user',
+          createdAt: now(),
+          parts: [{ type: 'text', text: `${summary ? `Earlier summary:\n${summary.text}\n\n` : ''}${transcript(old)}` }],
+        },
+      ],
+    });
+    summary = { upTo: old.at(-1)!.id, text };
+    from += cut;
+    const latest = (await this.store.get(sessionId)) ?? session;
+    await this.store.update(sessionId, { metadata: { ...latest.metadata, summary } });
+    messages = build(summary, from);
+    return messages;
+  }
+
+  /** One model call, returning its text. */
+  private async complete(provider: Provider, request: ModelRequest): Promise<string> {
+    let text = '';
+    for await (const event of provider.stream(request)) {
+      if (event.type === 'done') text = event.parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('\n');
+    }
+    return text.trim();
+  }
+
+  /** Add a turn's token use to the session's running total. */
+  private async recordUsage(sessionId: string, usage: Usage) {
+    if (!totalTokens(usage)) return;
+    const latest = await this.store.get(sessionId);
+    if (!latest) return;
+    await this.store.update(sessionId, { metadata: { ...latest.metadata, usage: addUsage((latest.metadata.usage as Usage) ?? {}, usage) } });
+  }
+
   private async needsApproval(call: ToolCallPart, sessionId: string, session: Session, signal: AbortSignal): Promise<boolean> {
     const tool = this.tools.get(call.name);
     if (!tool?.needsApproval) return false;
@@ -462,7 +573,14 @@ export class Harness {
       if (verdict && 'deny' in verdict) return result(`Not allowed: ${verdict.deny}`, true);
     }
     try {
-      return result(toolOutputText(await tool.run(parsed.data, { session, signal })));
+      const timeout = AbortSignal.timeout(this.toolTimeoutMs);
+      const output = await Promise.race([
+        tool.run(parsed.data, { session, signal: AbortSignal.any([signal, timeout]) }),
+        new Promise<never>((_, reject) =>
+          timeout.addEventListener('abort', () => reject(new Error(`${call.name} timed out after ${this.toolTimeoutMs < 1000 ? `${this.toolTimeoutMs}ms` : `${Math.round(this.toolTimeoutMs / 1000)}s`}`)), { once: true }),
+        ),
+      ]);
+      return result(toolOutputText(output));
     } catch (error) {
       return result(error instanceof Error ? error.message : String(error), true);
     }

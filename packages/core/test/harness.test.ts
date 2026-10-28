@@ -178,7 +178,7 @@ describe('FileStore', () => {
       const reopened = new FileStore(dir);
       const loaded = await reopened.get(session.id);
       expect(loaded?.messages).toHaveLength(2);
-      expect(loaded?.metadata).toEqual({ user: 'u1' });
+      expect(loaded?.metadata).toMatchObject({ user: 'u1', usage: { inputTokens: 10, outputTokens: 5 } });
       expect((await reopened.list())[0]).toMatchObject({ id: session.id, messageCount: 2 });
       expect(await reopened.get('../escape')).toBeUndefined();
       expect(await reopened.delete(session.id)).toBe(true);

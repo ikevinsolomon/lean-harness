@@ -1,6 +1,8 @@
 export { createHarness, Harness, HarnessError, parseModelId } from './harness.js';
 export type { HarnessOptions, RunOptions } from './harness.js';
 export { definePlugin } from './plugin.js';
+export { estimateTokens } from './context.js';
+export type { ContextOptions, Summary } from './context.js';
 export type { Hooks, HookContext, PendingToolCall, Plugin } from './plugin.js';
 export { defineTool, toolSpec, toolOutputText } from './tool.js';
 export type { Tool, ToolContext } from './tool.js';
