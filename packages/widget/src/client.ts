@@ -28,6 +28,14 @@ export interface Session {
   messages: Message[];
 }
 
+export interface SessionSummary {
+  id: string;
+  title?: string;
+  model: string;
+  updatedAt: string;
+  messageCount: number;
+}
+
 export type ChatEvent =
   | { type: 'turn_start'; sessionId: string; model: string }
   | { type: 'text_delta'; text: string }
@@ -77,6 +85,14 @@ export class HarnessClient {
 
   models() {
     return this.request<{ defaultModel: string; models: ModelInfo[] }>('/models');
+  }
+
+  listSessions() {
+    return this.request<{ sessions: SessionSummary[] }>('/sessions');
+  }
+
+  deleteSession(id: string) {
+    return this.request<void>(`/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
   createSession(model?: string) {

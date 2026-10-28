@@ -16,7 +16,7 @@ import {
   type Provider,
 } from '@lean-harness/core';
 import { createServer, serve } from '@lean-harness/server';
-import { clockPlugin, tasksPlugin } from './tasks-plugin.js';
+import { clockPlugin } from './clock-plugin.js';
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
@@ -47,15 +47,14 @@ const defaultModel =
 const harness = createHarness({
   providers,
   plugins: [
-    tasksPlugin(here('../.data/tasks.json')),
     clockPlugin,
     // Long-term memory per user (sessions created with metadata.userId), else one shared "default" user.
     memoryPlugin({ backend: new FileMemory(here('../.data/memory.json')) }),
     // Documents the model can search: every .md file in ./knowledge.
-    knowledgePlugin({ dir: here('../knowledge'), description: 'how this team plans and prioritises work' }),
+    knowledgePlugin({ dir: here('../knowledge'), description: 'Lean Harness: models, tools, plugins, memory, context and the chat UI' }),
   ],
   defaultModel,
-  instructions: 'You are Lean Harness, a friendly assistant that keeps the user organised. Be brief.',
+  instructions: 'You are Lean Harness, a helpful assistant. Answer clearly and briefly.',
   store: new FileStore(here('../.data/sessions')),
 });
 
@@ -73,7 +72,9 @@ app.get('/lean-chat.js', async (c) => {
 app.get('/logo.svg', async (c) =>
   c.body(await readFile(here('../../../assets/logo.svg'), 'utf8'), 200, { 'Content-Type': 'image/svg+xml' }),
 );
+// The full-screen chat app, and a page showing the same chat embedded in a site.
 app.get('/', async (c) => c.html(await readFile(here('../public/index.html'), 'utf8')));
+app.get('/embed', async (c) => c.html(await readFile(here('../public/embed.html'), 'utf8')));
 
 serve(app);
 console.log(`Default model: ${defaultModel}`);

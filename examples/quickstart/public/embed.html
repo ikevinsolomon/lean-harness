@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Embed Lean Harness</title>
+    <link rel="icon" href="/logo.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
+    <script type="module" src="/lean-chat.js"></script>
+    <style>
+      :root { --bg: #f4f4f1; --text: #18181b; --muted: #66666e; --card: #ffffff; --border: #e7e6e1; }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg: #0b0b0e; --text: #ececf1; --muted: #9a9aa8; --card: #121216; --border: #2c2c35; }
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font: 15px/1.6 Inter, ui-sans-serif, system-ui, sans-serif; }
+      main { max-width: 720px; margin: 0 auto; padding: 56px 16px; }
+      .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; }
+      .brand img { border-radius: 8px; }
+      h1 { font-size: 32px; letter-spacing: -0.03em; line-height: 1.15; margin: 20px 0 12px; }
+      p { color: var(--muted); margin: 0 0 16px; }
+      pre { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; overflow-x: auto; font: 13px ui-monospace, 'JetBrains Mono', Menlo, monospace; }
+      a { color: inherit; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="brand"><img src="/logo.svg" alt="" width="32" height="32" />Lean Harness</span>
+      <h1>Drop the chat into any site.</h1>
+      <p>This page is a stand-in for your own site. The button in the corner is the same assistant, in floating mode.</p>
+      <pre>&lt;script type="module" src="https://your-server/lean-chat.js"&gt;&lt;/script&gt;
+&lt;lean-chat endpoint="https://your-server" mode="floating"&gt;&lt;/lean-chat&gt;</pre>
+      <p>Other modes: <code>mode="inline"</code> fills a box on your page; <code>mode="page"</code> is the full-screen app at <a href="/">/</a>.</p>
+    </main>
+    <lean-chat mode="floating" heading="Lean Harness" icon="/logo.svg" page-context></lean-chat>
+  </body>
+</html>

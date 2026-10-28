@@ -7,7 +7,7 @@
 - **Any model, switchable on the fly.** Claude, OpenAI, DeepSeek, Gemini, OpenRouter, Ollama, or anything that speaks the OpenAI API. Change the model per session or per message, even mid-conversation.
 - **Everything is a plugin.** A domain (support desk, analytics, travel, ...) is a plugin: instructions, tools and hooks. Model providers are plugins too.
 - **API-first.** A plain HTTP + Server-Sent Events API, so you can build any UI on top: web, mobile, Slack, CLI.
-- **A UI you can embed anywhere.** `<lean-chat>` is a web component: two lines of HTML, any framework, light and dark, themeable.
+- **A UI you can embed anywhere.** `<lean-chat>` is a web component: a full-screen chat app like Claude or ChatGPT, a box in your page, or a floating button. Two lines of HTML, any framework, light and dark, themeable.
 - **Small enough to read in an afternoon.** The core is about 1,500 lines with comments, built-in plugins included. No framework to learn.
 
 ```
@@ -28,7 +28,7 @@ pnpm install
 pnpm dev
 ```
 
-Open http://localhost:8787. Without any API key you get the offline **Mock** model, which echoes and can call tools with `/tool_name {"arg": "value"}`. To use real models, copy `examples/quickstart/.env.example` to `examples/quickstart/.env` and add a key, for example `ANTHROPIC_API_KEY`. Every provider with a key appears in the model menu.
+Open http://localhost:8787 for the full-screen chat app (http://localhost:8787/embed shows the same assistant embedded in a page). Without any API key you get the offline **Mock** model, which echoes and can call tools with `/tool_name {"arg": "value"}`. To use real models, copy `examples/quickstart/.env.example` to `examples/quickstart/.env` and add a key, for example `ANTHROPIC_API_KEY`. Every provider with a key appears in the model menu.
 
 ## Build an agent in one file
 
@@ -85,7 +85,7 @@ const { text } = await harness.send(session.id, 'And tomorrow?', { model: 'ollam
 | `icon` | first letter of `heading` | Image URL for the header mark |
 | `suggestions` | | Starter cards: `Title: detail \| Title: detail` |
 | `page-context` | off | Attach the current page (title and URL) to every message |
-| `mode` | `inline` | `inline` fills its container; `floating` is a launcher button in the corner |
+| `mode` | `inline` | `page` is a full-screen app with a conversation sidebar and a light/dark switch, which becomes a phone layout below 768px; `inline` fills its container; `floating` is a launcher button in the corner |
 | `theme` | `auto` | `auto`, `light` or `dark` |
 | `hide-model-picker`, `hide-reasoning` | | Booleans |
 
@@ -168,7 +168,7 @@ curl -N -X POST localhost:8787/v1/sessions/<id>/messages -H 'content-type: appli
 packages/core     the harness: loop, plugins, tools, providers, stores  (@lean-harness/core)
 packages/server   HTTP + SSE API on Hono                                 (@lean-harness/server)
 packages/widget   <lean-chat> web component on Lit                       (@lean-harness/widget)
-examples/         quickstart: a task-tracker domain + demo page
+examples/         quickstart: a general assistant (clock tool, memory, a searchable guide) + demo pages
 ```
 
 ## Development

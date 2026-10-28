@@ -1,11 +1,12 @@
 import { html, LitElement, nothing, svg, type PropertyValues, type TemplateResult } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
-import { ApiError, HarnessClient, type ChatEvent, type Message, type ModelInfo } from './client.js';
+import { ApiError, HarnessClient, type ChatEvent, type Message, type ModelInfo, type SessionSummary } from './client.js';
 import { renderMarkdown } from './markdown.js';
+import { pageStyles } from './page-styles.js';
 import { styles } from './styles.js';
 
 export { HarnessClient, ApiError } from './client.js';
-export type { ChatEvent, Message, ModelInfo, Session } from './client.js';
+export type { ChatEvent, Message, ModelInfo, Session, SessionSummary } from './client.js';
 
 interface ToolCall {
   id: string;
@@ -35,6 +36,11 @@ const icon = {
   down: svg`<path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
   plus: svg`<path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`,
   page: svg`<path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3v5h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>`,
+  menu: svg`<path d="M4 7h16M4 12h16M4 17h10" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>`,
+  sidebar: svg`<rect x="3.5" y="4.5" width="17" height="15" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9.5 4.5v15" fill="none" stroke="currentColor" stroke-width="1.8"/>`,
+  trash: svg`<path d="M5 7h14M10 11v6M14 11v6M6.5 7l1 12a2 2 0 002 2h5a2 2 0 002-2l1-12M9.5 7V5a1 1 0 011-1h3a1 1 0 011 1v2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`,
+  sun: svg`<circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6L6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>`,
+  moon: svg`<path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>`,
   brain: svg`<path d="M9 4a3 3 0 00-3 3 3 3 0 00-2 5 3 3 0 002 5 3 3 0 006 0V4.5A2.5 2.5 0 009 4zM15 4a3 3 0 013 3 3 3 0 012 5 3 3 0 01-2 5 3 3 0 01-6 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>`,
 };
 
@@ -110,14 +116,14 @@ function toItems(messages: Message[]): Item[] {
  * <lean-chat endpoint="https://your-server"></lean-chat>
  *
  * Attributes: endpoint, token, model, heading, icon, subtitle, greeting, placeholder,
- * suggestions ("Title: detail | Title: detail"), disclaimer, mode ("inline" | "floating"),
+ * suggestions ("Title: detail | Title: detail"), disclaimer, mode ("inline" | "floating" | "page"),
  * theme ("auto" | "light" | "dark"), page-context, hide-model-picker, hide-reasoning.
  * Property: `context`, an object sent with every message ({ "Record": "Order 4411" }).
  *
  * Events: lean-chat-event (every streamed event, in `detail`), lean-chat-error.
  */
 export class LeanChat extends LitElement {
-  static override styles = styles;
+  static override styles = [styles, pageStyles];
 
   static override properties = {
     endpoint: { type: String },
@@ -139,6 +145,9 @@ export class LeanChat extends LitElement {
     context: { type: Object },
     items: { state: true },
     models: { state: true },
+    sessions: { state: true },
+    drawer: { state: true },
+    collapsed: { state: true },
     hasMemory: { state: true },
     dismissed: { state: true },
     busy: { state: true },
@@ -159,7 +168,8 @@ export class LeanChat extends LitElement {
   declare placeholder: string;
   declare suggestions: string;
   declare disclaimer: string;
-  declare mode: 'inline' | 'floating';
+  /** inline: fills its box. floating: a launcher button. page: a full-screen app with a conversation sidebar. */
+  declare mode: 'inline' | 'floating' | 'page';
   declare theme: 'auto' | 'light' | 'dark';
   declare pageContext: boolean;
   declare hideModelPicker: boolean;
@@ -168,6 +178,9 @@ export class LeanChat extends LitElement {
   declare context: Record<string, unknown>;
   declare private items: Item[];
   declare private models: ModelInfo[];
+  declare private sessions: SessionSummary[];
+  declare private drawer: boolean;
+  declare private collapsed: boolean;
   declare private hasMemory: boolean;
   declare private dismissed: Set<string>;
   declare private busy: boolean;
@@ -199,6 +212,9 @@ export class LeanChat extends LitElement {
     this.context = {};
     this.items = [];
     this.models = [];
+    this.sessions = [];
+    this.drawer = false;
+    this.collapsed = false;
     this.hasMemory = false;
     this.dismissed = new Set();
     this.busy = false;
@@ -212,6 +228,8 @@ export class LeanChat extends LitElement {
 
   override connectedCallback() {
     super.connectedCallback();
+    const saved = safeStorage(() => localStorage.getItem('lean-chat:theme'));
+    if (saved === 'light' || saved === 'dark') this.theme = saved;
     this.client = new HarnessClient(this.endpoint || location.origin, this.token);
     void this.init();
   }
@@ -241,19 +259,59 @@ export class LeanChat extends LitElement {
     } catch (error) {
       this.fail(error);
     }
+    void this.refreshSessions();
     const saved = safeStorage(() => localStorage.getItem(this.storageKey));
-    if (!saved) return;
+    if (saved) await this.openSession(saved).catch(() => safeStorage(() => localStorage.removeItem(this.storageKey)));
+  }
+
+  /** Load a stored conversation into the view. */
+  async openSession(id: string) {
+    if (this.busy) return;
+    const session = await this.client.getSession(id);
+    this.sessionId = session.id;
+    this.model = session.model;
+    this.items = toItems(session.messages);
+    this.error = '';
+    this.drawer = false;
+    safeStorage(() => localStorage.setItem(this.storageKey, session.id));
+    await this.updateComplete;
+    const log = this.renderRoot.querySelector('.log');
+    if (log) log.scrollTop = log.scrollHeight;
+  }
+
+  private async refreshSessions() {
+    if (this.mode !== 'page') return;
     try {
-      const session = await this.client.getSession(saved);
-      this.sessionId = session.id;
-      this.model = session.model;
-      this.items = toItems(session.messages);
-      await this.updateComplete;
-      const log = this.renderRoot.querySelector('.log');
-      if (log) log.scrollTop = log.scrollHeight;
+      this.sessions = (await this.client.listSessions()).sessions.filter((s) => s.messageCount > 0);
     } catch {
-      safeStorage(() => localStorage.removeItem(this.storageKey));
+      // the sidebar is a convenience; the chat still works without it
     }
+  }
+
+  private async removeSession(id: string) {
+    try {
+      await this.client.deleteSession(id);
+      if (id === this.sessionId) this.newChat();
+      await this.refreshSessions();
+    } catch (error) {
+      this.fail(error);
+    }
+  }
+
+  /** Switch between light and dark, and remember the choice in this browser. */
+  setTheme(theme: 'light' | 'dark') {
+    this.theme = theme;
+    safeStorage(() => localStorage.setItem('lean-chat:theme', theme));
+  }
+
+  private get isDark() {
+    return this.theme === 'dark' || (this.theme === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+
+  /** Open the sidebar: a drawer on narrow screens, a column on wide ones. */
+  private showSidebar() {
+    if (matchMedia('(max-width: 768px)').matches) this.drawer = true;
+    else this.collapsed = false;
   }
 
   /** Context sent with the next message: the `context` property, plus this page when enabled, minus removed chips. */
@@ -276,6 +334,7 @@ export class LeanChat extends LitElement {
     this.items = [];
     this.error = '';
     this.dismissed = new Set();
+    this.drawer = false;
     safeStorage(() => localStorage.removeItem(this.storageKey));
     this.focusInput();
   }
@@ -311,6 +370,7 @@ export class LeanChat extends LitElement {
         ...this.notes.map((text) => ({ kind: 'note' as const, text })),
       ];
       this.focusInput();
+      void this.refreshSessions();
     }
   }
 
@@ -403,6 +463,7 @@ export class LeanChat extends LitElement {
   }
 
   override render() {
+    if (this.mode === 'page') return this.renderPage();
     if (this.mode === 'floating' && !this.open) {
       return html`<button class="launcher" aria-label="Open chat" @click=${() => ((this.open = true), this.focusInput())}>
         ${svgIcon(icon.chat, 22)}
@@ -416,10 +477,7 @@ export class LeanChat extends LitElement {
           ${this.items.length ? this.renderThread() : this.renderEmpty()}
           ${waiting ? html`<div class="typing" role="status" aria-label="Thinking"><span></span><span></span><span></span></div>` : nothing}
         </div>
-        ${this.error
-          ? html`<div class="error" role="alert">${svgIcon(icon.alert, 16)}<span>${this.error}</span>
-              <button aria-label="Dismiss" @click=${() => (this.error = '')}>${svgIcon(icon.closeSmall, 14)}</button></div>`
-          : nothing}
+        ${this.renderError()}
         ${this.renderComposer()}
       </section>
       ${this.mode === 'floating'
@@ -428,7 +486,13 @@ export class LeanChat extends LitElement {
     `;
   }
 
-  private renderHeader() {
+  private renderMark() {
+    return this.icon
+      ? html`<img class="mark" src=${this.icon} alt="" />`
+      : html`<div class="mark" aria-hidden="true">${this.heading.trim().charAt(0).toUpperCase()}</div>`;
+  }
+
+  private renderModelPicker() {
     const current = this.models.find((m) => m.id === this.model);
     const dot = html`<span class="dot" style="background:${PROVIDER_COLORS[current?.provider ?? ''] ?? '#a1a1aa'}"></span>`;
     // Always show which model answers; it becomes a menu when there is more than one to choose from.
@@ -443,20 +507,22 @@ export class LeanChat extends LitElement {
             <span class="chevron">${svgIcon(icon.down, 12)}</span>
           </label>`
         : html`<span class="model static" title="Model">${dot}<span class="name">${current?.label ?? this.model}</span></span>`;
+    return picker;
+  }
+
+  private renderHeader() {
     return html`<header>
-      ${this.icon
-        ? html`<img class="mark" src=${this.icon} alt="" />`
-        : html`<div class="mark" aria-hidden="true">${this.heading.trim().charAt(0).toUpperCase()}</div>`}
+      ${this.renderMark()}
       <div class="titles">
         <div class="title">${this.heading}</div>
         ${this.subtitle ? html`<div class="subtitle">${this.subtitle}</div>` : nothing}
       </div>
-      ${picker}
+      ${this.renderModelPicker()}
       <button class="icon-button" title="New chat" aria-label="New chat" @click=${() => this.newChat()}>${svgIcon(icon.edit)}</button>
     </header>`;
   }
 
-  private renderEmpty() {
+  private renderCards() {
     const cards = this.suggestions
       .split('|')
       .map((s) => s.trim())
@@ -465,17 +531,91 @@ export class LeanChat extends LitElement {
         const at = s.indexOf(': ');
         return at > 0 ? { title: s.slice(0, at), detail: s.slice(at + 2) } : { title: s, detail: '' };
       });
-    return html`<div class="empty">
-      <h2>${greetingFor(new Date().getHours())}<span class="soft">${this.greeting}</span></h2>
-      ${cards.length
-        ? html`<div class="cards">
-            ${cards.map(
-              (c) => html`<button class="card" @click=${() => this.send(c.title)}>
-                <b>${c.title}</b>${c.detail ? html`<small>${c.detail}</small>` : nothing}
-              </button>`,
-            )}
-          </div>`
-        : nothing}
+    return cards.length
+      ? html`<div class="cards">
+          ${cards.map(
+            (c) => html`<button class="card" @click=${() => this.send(c.title)}>
+              <b>${c.title}</b>${c.detail ? html`<small>${c.detail}</small>` : nothing}
+            </button>`,
+          )}
+        </div>`
+      : nothing;
+  }
+
+  private renderGreeting() {
+    return html`<h2>${greetingFor(new Date().getHours())}<span class="soft">${this.greeting}</span></h2>`;
+  }
+
+  private renderEmpty() {
+    return html`<div class="empty">${this.renderGreeting()}${this.renderCards()}</div>`;
+  }
+
+  private renderError() {
+    return this.error
+      ? html`<div class="error" role="alert">${svgIcon(icon.alert, 16)}<span>${this.error}</span>
+          <button aria-label="Dismiss" @click=${() => (this.error = '')}>${svgIcon(icon.closeSmall, 14)}</button></div>`
+      : nothing;
+  }
+
+  /** The full-screen app: conversation sidebar, a centred thread, and the composer. */
+  private renderPage() {
+    const waiting = this.busy && this.items.at(-1)?.kind === 'user';
+    const newChat = html`<button class="icon-button top-new" title="New chat" aria-label="New chat" @click=${() => this.newChat()}>
+      ${svgIcon(icon.edit)}</button>`;
+    return html`<div class="app ${this.collapsed ? 'collapsed' : ''} ${this.drawer ? 'drawer' : ''}">
+      <aside class="sidebar" aria-label="Conversations">
+        <div class="side-head">
+          ${this.renderMark()}<span class="side-title">${this.heading}</span>
+          <button class="icon-button" title="Close sidebar" aria-label="Close sidebar"
+            @click=${() => (this.drawer ? (this.drawer = false) : (this.collapsed = true))}>${svgIcon(icon.sidebar)}</button>
+        </div>
+        <button class="new-chat" @click=${() => this.newChat()}>${svgIcon(icon.edit, 17)}New chat</button>
+        <div class="side-label">Recent</div>
+        <nav class="history">
+          ${this.sessions.length
+            ? this.sessions.map(
+                (s) => html`<div class="history-row ${s.id === this.sessionId ? 'active' : ''}">
+                  <button class="history-item" ?disabled=${this.busy} @click=${() => this.openSession(s.id).catch((e) => this.fail(e))}
+                    aria-current=${s.id === this.sessionId ? 'page' : 'false'}>${s.title || 'New chat'}</button>
+                  <button class="history-delete" title="Delete" aria-label=${`Delete ${s.title || 'conversation'}`}
+                    @click=${() => this.removeSession(s.id)}>${svgIcon(icon.trash, 15)}</button>
+                </div>`,
+              )
+            : html`<p class="side-empty">Your conversations will show up here.</p>`}
+        </nav>
+        <div class="side-foot">
+          ${this.hasMemory ? html`<span class="side-memory">${svgIcon(icon.brain, 15)}Memory on</span>` : nothing}
+          <div class="segmented" role="group" aria-label="Theme">
+            <button aria-pressed=${this.isDark ? 'false' : 'true'} @click=${() => this.setTheme('light')}>${svgIcon(icon.sun, 15)}Light</button>
+            <button aria-pressed=${this.isDark ? 'true' : 'false'} @click=${() => this.setTheme('dark')}>${svgIcon(icon.moon, 15)}Dark</button>
+          </div>
+        </div>
+      </aside>
+      <div class="scrim" @click=${() => (this.drawer = false)}></div>
+      <section class="main">
+        <div class="topbar">
+          <button class="icon-button menu" title="Open sidebar" aria-label="Open sidebar" @click=${() => this.showSidebar()}>
+            ${svgIcon(icon.menu)}</button>
+          <div class="top-brand">${this.renderMark()}<span class="title">${this.heading}</span></div>
+          ${this.renderModelPicker()}
+          <span class="spacer"></span>
+          ${newChat}
+        </div>
+        ${this.items.length
+          ? html`<div class="log" aria-live="polite">
+                <div class="column thread">
+                  ${this.renderThread()}
+                  ${waiting ? html`<div class="typing" role="status" aria-label="Thinking"><span></span><span></span><span></span></div>` : nothing}
+                </div>
+              </div>
+              <div class="column dock">${this.renderError()}${this.renderComposer()}</div>`
+          : html`<div class="hero">
+              <div class="column">
+                <div class="hero-head">${this.icon ? html`<img class="hero-mark" src=${this.icon} alt="" />` : nothing}${this.renderGreeting()}</div>
+                ${this.renderError()}${this.renderComposer()}${this.renderCards()}
+              </div>
+            </div>`}
+      </section>
     </div>`;
   }
 
@@ -564,7 +704,7 @@ export class LeanChat extends LitElement {
             </div>`
           : nothing}
         <label class="sr-only" for="message">Message</label>
-        <textarea id="message" rows="1" placeholder=${this.placeholder || `Message ${this.heading}…`} .value=${this.draft}
+        <textarea id="message" rows="1" placeholder=${this.placeholder || (this.mode === 'page' && !this.items.length ? `Ask ${this.heading} anything…` : `Message ${this.heading}…`)} .value=${this.draft}
           @input=${this.onInput} @keydown=${this.onKeydown}></textarea>
         <div class="toolbar">
           ${canAddPage
