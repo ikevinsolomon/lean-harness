@@ -19,6 +19,10 @@ interface AppState {
   gate: Gate;
   /** The server has built-in accounts (email and password, invites). */
   accounts: boolean;
+  /** Built-in accounts: whether email works, who may sign up, and "Continue with ..." providers. */
+  status: AuthStatus | null;
+  /** After a profile change: show the updated name or email. */
+  setUser(user: User): void;
   /** Token servers: try this access token. */
   signIn(token: string): Promise<boolean>;
   /** After a sign-in, setup or accepted invite: load the app for that user. */
@@ -77,6 +81,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [gate, setGate] = useState<Gate>(null);
   const [accounts, setAccounts] = useState(false);
+  const [status, setStatus] = useState<AuthStatus | null>(null);
   const [loaded, setLoaded] = useState(0);
   const [info, setInfo] = useState<AppInfo>({ name: 'Lean Harness', suggestions: [] });
 
@@ -100,6 +105,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw e;
       });
       setAccounts(Boolean(status));
+      setStatus(status);
       if (status?.setupRequired) return setGate('setup');
       if (status && !status.user) return setGate('login');
       const [me, m, t] = await Promise.all([api.me(), api.models(), api.tools()]);
@@ -135,6 +141,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       user,
       gate,
       accounts,
+      status,
+      setUser,
       reload: () => setLoaded((n) => n + 1),
       async signIn(token) {
         api.setToken(token);
@@ -187,7 +195,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       error,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [info, user, gate, accounts, models, chosenDefault, serverDefault, hasMemory, sessions, refreshSessions, theme, collapsed, drawer, dialog, error],
+    [info, user, gate, accounts, status, models, chosenDefault, serverDefault, hasMemory, sessions, refreshSessions, theme, collapsed, drawer, dialog, error],
   );
 
   return (

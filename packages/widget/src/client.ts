@@ -65,6 +65,10 @@ export interface User {
   name?: string;
   email?: string;
   role?: 'admin' | 'member';
+  /** Built-in accounts: the person confirmed their email address. */
+  emailVerified?: boolean;
+  /** Built-in accounts: false for people who only sign in with Google/Microsoft/OIDC. */
+  hasPassword?: boolean;
 }
 
 /** With built-in accounts: a person who can sign in. */
@@ -75,6 +79,25 @@ export interface Account {
   role: 'admin' | 'member';
   disabled: boolean;
   createdAt: string;
+  emailVerified: boolean;
+  hasPassword: boolean;
+  lastSignInAt?: string;
+}
+
+/** Who may create an account without an invite. */
+export interface SignupPolicy {
+  mode: 'invite' | 'domain' | 'open';
+  domains: string[];
+}
+
+/** One line of the admin's activity log. */
+export interface ActivityEntry {
+  id: string;
+  at: string;
+  actor: string | null;
+  action: string;
+  target: string | null;
+  ip: string | null;
 }
 
 export interface Invite {
@@ -91,6 +114,12 @@ export interface AuthStatus {
   /** A fresh server: the first person to sign up becomes the admin. */
   setupRequired: boolean;
   user: User | null;
+  /** The server can send email: "Forgot password?" and sign-up by email work. */
+  email?: boolean;
+  /** Who may sign up without an invite (`domains` only for `domain`). */
+  signup?: SignupPolicy;
+  /** "Continue with ..." buttons: link to `ssoUrl(id)`. */
+  providers?: { id: string; name: string }[];
 }
 
 /** How the server's app presents itself: name, tagline, starter prompts. */
@@ -154,7 +183,48 @@ export class HarnessClient {
     return this.request<void>('/auth/logout', { method: 'POST', body: '{}' });
   }
 
-  changePassword(current: string, next: string) {
+  /** Where "Continue with Google" goes. Pass an invite token to join with it, and `next` to come back to a page. */
+  ssoUrl(provider: string, options: { invite?: string; next?: string } = {}) {
+    const query = new URLSearchParams(Object.entries(options).filter((e): e is [string, string] => Boolean(e[1]))).toString();
+    return this.url(`/auth/sso/${encodeURIComponent(provider)}${query ? `?${query}` : ''}`);
+  }
+
+  /** Emails a password reset link, if the account exists. */
+  forgotPassword(email: string) {
+    return this.request<void>('/auth/forgot', { method: 'POST', body: JSON.stringify({ email }) });
+  }
+
+  /** Sign up without an invite (when the server allows it): emails a link that finishes it. */
+  signup(email: string) {
+    return this.request<void>('/auth/signup', { method: 'POST', body: JSON.stringify({ email }) });
+  }
+
+  updateProfile(change: { name: string }) {
+    return this.request<{ user: User }>('/auth/me', { method: 'PATCH', body: JSON.stringify(change) });
+  }
+
+  /** Change your email. `pending`: a confirmation link went to the new address. */
+  changeEmail(email: string, password?: string) {
+    return this.request<{ pending: boolean; user: User }>('/auth/email', { method: 'POST', body: JSON.stringify({ email, password }) });
+  }
+
+  /** Send the email confirmation link again. */
+  resendVerification() {
+    return this.request<void>('/auth/verify', { method: 'POST', body: '{}' });
+  }
+
+  /** Open a link from a confirmation email. */
+  confirmEmail(token: string) {
+    return this.request<{ user: User }>(`/auth/email/${encodeURIComponent(token)}`, { method: 'POST', body: '{}' });
+  }
+
+  /** Delete your own account. */
+  deleteAccount(password?: string) {
+    return this.request<void>('/auth/me', { method: 'DELETE', body: JSON.stringify({ password }) });
+  }
+
+  /** Change (or, with no password yet, set) your password. */
+  changePassword(current: string | undefined, next: string) {
     return this.request<void>('/auth/password', { method: 'POST', body: JSON.stringify({ current, next }) });
   }
 
@@ -204,9 +274,28 @@ export class HarnessClient {
     return this.request<{ invites: Invite[] }>('/admin/invites');
   }
 
-  /** A new invite link token. It is shown only once, so share it right away. */
+  /** A new invite link token. It is shown only once, so share it right away. `emailed`: it was also emailed to them. */
   createInvite(options: { email?: string; role?: 'admin' | 'member' } = {}) {
-    return this.request<{ invite: Invite; token: string }>('/admin/invites', { method: 'POST', body: JSON.stringify(options) });
+    return this.request<{ invite: Invite; token: string; emailed: boolean }>('/admin/invites', { method: 'POST', body: JSON.stringify(options) });
+  }
+
+  /** A fresh link for an open invite (the old one stops working), emailed again when it has an email. */
+  renewInvite(id: string) {
+    return this.request<{ invite: Invite; token: string; emailed: boolean }>(`/admin/invites/${encodeURIComponent(id)}/renew`, { method: 'POST', body: '{}' });
+  }
+
+  /** Admin only: who may sign up, and whether email and single sign-on are set up. */
+  settings() {
+    return this.request<{ signup: SignupPolicy; email: boolean; providers: { id: string; name: string }[] }>('/admin/settings');
+  }
+
+  updateSettings(change: { signup: SignupPolicy }) {
+    return this.request<{ signup: SignupPolicy }>('/admin/settings', { method: 'PATCH', body: JSON.stringify(change) });
+  }
+
+  /** Admin only: sign-ins and changes to people, newest first. Pass the last entry's `at` for older ones. */
+  activity(before?: string) {
+    return this.request<{ activity: ActivityEntry[] }>(`/admin/activity${before ? `?before=${encodeURIComponent(before)}` : ''}`);
   }
 
   revokeInvite(id: string) {
@@ -247,7 +336,8 @@ export class HarnessClient {
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await fetch(this.url(path), { ...init, headers: this.headers(init.headers) });
     if (!response.ok) throw await this.error(response);
-    return (response.status === 204 ? undefined : await response.json()) as T;
+    const text = await response.text(); // 202 and 204 have no body
+    return (text ? JSON.parse(text) : undefined) as T;
   }
 
   private headers(extra?: HeadersInit): Headers {

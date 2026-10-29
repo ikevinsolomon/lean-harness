@@ -1690,6 +1690,50 @@ a {
   font-size: 13px;
   color: var(--muted);
 }
+.signin-card .btn.sso {
+  margin-top: 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  font-weight: 500;
+}
+.signin-card .btn.sso:hover {
+  background: var(--surface);
+}
+.or {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.or::before,
+.or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+button.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+button.link:hover {
+  text-decoration: underline;
+}
+button.link.danger {
+  color: var(--danger);
+  font-size: 13px;
+}
+.signin-card .link.forgot {
+  align-self: flex-end;
+  margin-top: -4px;
+  font-size: 13px;
+}
 .input {
   height: 36px;
   padding: 0 12px;
@@ -1783,16 +1827,183 @@ a {
 .people .row-menu {
   position: relative;
 }
-.password-form {
+.account-row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 0 0;
+}
+.account-label {
+  padding-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.account-value {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.account-email {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  overflow-wrap: anywhere;
+}
+.account-actions {
+  display: inline-flex;
+  gap: 12px;
+  font-size: 13px;
+}
+.badge {
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--surface);
+  color: var(--danger);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.inline-form {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+.inline-form .input {
+  flex: 1;
+  min-width: 0;
+}
+.stack-form {
   display: grid;
   gap: 8px;
+  width: 100%;
+}
+.form-buttons {
+  display: flex;
+  gap: 8px;
+}
+.input.wide {
+  width: 100%;
+  margin-bottom: 4px;
+}
+.join-form {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
   margin-top: 10px;
 }
-.password-form .btn {
-  justify-self: start;
+.join-form .input {
+  width: 100%;
+}
+.join-form .segmented button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.warn {
+  color: var(--danger) !important;
+}
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.dialog-body p.sent {
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+.members-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.members-head .input {
+  width: 200px;
+  height: 32px;
+}
+.count {
+  margin-left: 4px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.people li.invite-row {
+  flex-wrap: wrap;
+}
+.invite-row .who {
+  flex-basis: 50%;
+}
+.dialog-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 20px 0;
+  border-bottom: 1px solid var(--border);
+}
+.dialog-tabs button {
+  padding: 8px 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.dialog-tabs button[aria-selected='true'] {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+.activity {
+  list-style: none;
+  margin: 10px 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.activity li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13.5px;
+}
+.activity li span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.activity li.failed span {
+  color: var(--danger);
+}
+.activity time {
+  flex: none;
+  color: var(--muted);
+  font-size: 12.5px;
 }
 @media (max-width: 520px) {
   .invite-form {
     flex-direction: column;
+  }
+  .account-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .account-label {
+    padding-top: 0;
+  }
+  .members-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .members-head .input {
+    width: 100%;
+  }
+  .activity li {
+    flex-direction: column;
+    gap: 2px;
   }
 }

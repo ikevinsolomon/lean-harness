@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { MemoryRecord } from '@lean-harness/widget/client';
 import { api, mod, PROVIDER_COLORS } from '../lib';
 import { useApp, type Theme } from '../store';
+import { AccountSettings } from './AccountSettings';
 import { Dialog } from './Dialog';
 import { Check, Monitor, Moon, Sun, Trash } from './Icons';
 
@@ -30,38 +31,6 @@ const SHORTCUTS: [string, string[]][] = [
   ['Stop the reply', ['Esc']],
 ];
 
-/** Built-in accounts: change your password (signs you out on your other devices). */
-function PasswordForm() {
-  const { toast } = useApp();
-  const [current, setCurrent] = useState('');
-  const [next, setNext] = useState('');
-  const [busy, setBusy] = useState(false);
-  return (
-    <form
-      className="password-form"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        setBusy(true);
-        try {
-          await api.changePassword(current, next);
-          setCurrent('');
-          setNext('');
-          toast('Password changed');
-        } catch (err) {
-          toast((err as Error).message);
-        }
-        setBusy(false);
-      }}
-    >
-      <input className="input" type="password" autoComplete="current-password" placeholder="Current password" aria-label="Current password" value={current} onChange={(e) => setCurrent(e.target.value)} />
-      <input className="input" type="password" autoComplete="new-password" placeholder="New password (at least 8 characters)" aria-label="New password" value={next} onChange={(e) => setNext(e.target.value)} />
-      <button className="btn" type="submit" disabled={!current || next.length < 8 || busy}>
-        Change password
-      </button>
-    </form>
-  );
-}
-
 export function SettingsDialog() {
   const { theme, setTheme, models, defaultModel, setDefaultModel, setDialog, sessions, toast, accounts, user } = useApp();
   // null: the server does not expose memory (no memory store configured).
@@ -81,13 +50,7 @@ export function SettingsDialog() {
     <Dialog title="Settings" onClose={() => setDialog(null)}>
       <div className="dialog-body">
         {accounts && user && (
-          <div className="setting" style={{ display: 'block' }}>
-            <b>Account</b>
-            <small>
-              {user.name} · {user.email}
-            </small>
-            <PasswordForm />
-          </div>
+          <AccountSettings />
         )}
         <div className="setting">
           <div>

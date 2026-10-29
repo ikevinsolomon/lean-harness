@@ -27,7 +27,25 @@ import {
   type SqlDb,
   type Tool,
 } from '@lean-harness/core';
-import { Accounts, createServer, Hono, serve, tokenAuth, type Account, type AppInfo, type User } from '@lean-harness/server';
+import {
+  Accounts,
+  consoleMailer,
+  createServer,
+  google,
+  Hono,
+  microsoft,
+  oidc,
+  resendMailer,
+  serve,
+  smtpMailer,
+  tokenAuth,
+  type Account,
+  type AppInfo,
+  type Mailer,
+  type SignupPolicy,
+  type SsoProvider,
+  type User,
+} from '@lean-harness/server';
 
 export interface AppOptions {
   /**
@@ -148,7 +166,7 @@ function serveWebApp(app: Hono, root: string, name: string) {
     const html = await readFile(join(web, 'index.html'), 'utf8').catch(() => 'Build the web app first: pnpm --filter @lean-harness/web build');
     return html.replace(/<title>[^<]*<\/title>/, `<title>${name.replace(/[<&]/g, '')}</title>`);
   };
-  for (const path of ['/', '/c/:id', '/invite/:token', '/reset/:token']) app.get(path, async (c) => c.html(await page()));
+  for (const path of ['/', '/c/:id', '/invite/:token', '/reset/:token', '/confirm-email/:token']) app.get(path, async (c) => c.html(await page()));
 
   // The <lean-chat> widget, for embedding the assistant in other pages.
   app.get('/lean-chat.js', async (c) => {
@@ -161,8 +179,37 @@ function serveWebApp(app: Hono, root: string, name: string) {
   });
 }
 
+/** Email from the environment: Resend (RESEND_API_KEY), SMTP (SMTP_URL), or the console (EMAIL=console). */
+export async function mailerFromEnv(env = process.env, name = 'Lean Harness'): Promise<Mailer | undefined> {
+  const from = env.EMAIL_FROM || `${name} <noreply@localhost>`;
+  if (env.RESEND_API_KEY) return resendMailer({ apiKey: env.RESEND_API_KEY, from });
+  if (env.SMTP_URL) return smtpMailer({ url: env.SMTP_URL, from });
+  if (env.EMAIL === 'console') return consoleMailer();
+  return undefined;
+}
+
+/** "Continue with ..." providers that have a client ID and secret in the environment. */
+export function ssoFromEnv(env = process.env): SsoProvider[] {
+  return [
+    ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET ? [google({ clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET })] : []),
+    ...(env.MICROSOFT_CLIENT_ID && env.MICROSOFT_CLIENT_SECRET
+      ? [microsoft({ clientId: env.MICROSOFT_CLIENT_ID, clientSecret: env.MICROSOFT_CLIENT_SECRET, tenant: env.MICROSOFT_TENANT || undefined })]
+      : []),
+    ...(env.OIDC_ISSUER && env.OIDC_CLIENT_ID && env.OIDC_CLIENT_SECRET
+      ? [oidc({ name: env.OIDC_NAME || 'single sign-on', issuer: env.OIDC_ISSUER, clientId: env.OIDC_CLIENT_ID, clientSecret: env.OIDC_CLIENT_SECRET, trustEmail: env.OIDC_TRUST_EMAIL === '1' })]
+      : []),
+  ];
+}
+
+/** Who may sign up without an invite, until the admin changes it in People: SIGNUP=invite|domain|open, SIGNUP_DOMAINS=acme.com,acme.co.uk. */
+function signupFromEnv(env: NodeJS.ProcessEnv): SignupPolicy | undefined {
+  const mode = env.SIGNUP;
+  if (mode !== 'domain' && mode !== 'open' && mode !== 'invite') return undefined;
+  return { mode, domains: list(env.SIGNUP_DOMAINS) ?? [] };
+}
+
 /** Sign-in from the environment: accounts by default, tokens with HARNESS_USERS, none with AUTH=off. */
-function signInFromEnv(env: NodeJS.ProcessEnv, db: SqlDb, onSetup: (admin: Account) => Promise<void>) {
+async function signInFromEnv(env: NodeJS.ProcessEnv, db: SqlDb, name: string, publicUrl: string, onSetup: (admin: Account) => Promise<void>) {
   const users = Object.fromEntries(
     (list(env.HARNESS_USERS) ?? []).map((entry): [string, User] => {
       const [id, token] = entry.split(':');
@@ -170,15 +217,29 @@ function signInFromEnv(env: NodeJS.ProcessEnv, db: SqlDb, onSetup: (admin: Accou
     }),
   );
   const tokens = Object.keys(users).length > 0;
-  const accounts = env.AUTH !== 'off' && !tokens && !env.HARNESS_API_KEY ? new Accounts(db, { onSetup }) : undefined;
-  return { accounts, authenticate: tokens ? tokenAuth(users) : undefined, mode: accounts ? 'accounts (email and password)' : tokens ? 'access tokens' : 'off' };
+  if (env.AUTH === 'off' || tokens || env.HARNESS_API_KEY) {
+    return { accounts: undefined, authenticate: tokens ? tokenAuth(users) : undefined, mode: tokens ? 'access tokens' : 'off' };
+  }
+  const mailer = await mailerFromEnv(env, name);
+  const sso = ssoFromEnv(env);
+  const accounts = new Accounts(db, {
+    onSetup,
+    mailer,
+    publicUrl,
+    appName: name,
+    sso,
+    signup: signupFromEnv(env),
+    sessionDays: env.SESSION_DAYS ? Number(env.SESSION_DAYS) : undefined,
+  });
+  const extras = [mailer ? 'email' : '', ...sso.map((p) => p.name)].filter(Boolean);
+  return { accounts, authenticate: undefined, mode: `accounts${extras.length ? ` (${extras.join(', ')})` : ''}` };
 }
 
 /**
  * `node src/index.ts reset-password [email]`: print a one-time link to set a new password,
  * for when the admin is locked out. Without an email, it is for the first admin.
  */
-async function printResetLink(db: SqlDb, env: NodeJS.ProcessEnv, email?: string) {
+async function printResetLink(db: SqlDb, base: string, email?: string) {
   const accounts = new Accounts(db);
   const account = email ? await accounts.userByEmail(email) : (await accounts.listUsers()).find((u) => u.role === 'admin');
   if (!account) {
@@ -187,7 +248,6 @@ async function printResetLink(db: SqlDb, env: NodeJS.ProcessEnv, email?: string)
     return;
   }
   const { token } = await accounts.createResetLink(account.id);
-  const base = env.PUBLIC_URL?.replace(/\/$/, '') || `http://localhost:${env.PORT ?? 8787}`;
   console.log(`Password reset link for ${account.name} (${account.email}), valid for 24 hours:\n\n  ${base}/reset/${token}\n`);
 }
 
@@ -209,9 +269,11 @@ export async function startApp(options: AppOptions) {
   const env = process.env;
   const name = options.name ?? 'Lean Harness';
   const db = await openDatabase(root, env);
+  // Where people reach the app: links in emails and sign-in redirects use it.
+  const publicUrl = env.PUBLIC_URL?.replace(/\/$/, '') || `http://localhost:${env.PORT ?? 8787}`;
 
   if (process.argv[2] === 'reset-password') {
-    await printResetLink(db, env, process.argv[3]);
+    await printResetLink(db, publicUrl, process.argv[3]);
     return null;
   }
 
@@ -245,7 +307,7 @@ export async function startApp(options: AppOptions) {
     ],
   });
 
-  const signIn = signInFromEnv(env, db, async (admin) => {
+  const signIn = await signInFromEnv(env, db, name, publicUrl, async (admin) => {
     // Chats made before sign-in was on belong to the admin.
     await harness.store.list(); // creates the tables on a new database
     await db.query('UPDATE lh_sessions SET owner = ? WHERE owner IS NULL', [admin.id]);
@@ -257,7 +319,7 @@ export async function startApp(options: AppOptions) {
   app.use('/v1/*', async (c, next) => {
     const started = Date.now();
     await next();
-    const path = c.req.path.replace(/\/(invites|resets)\/[^/]+/, '/$1/…');
+    const path = c.req.path.replace(/\/(invites|resets|email)\/[^/]+/, '/$1/…');
     console.log(`${c.req.method} ${path} ${c.res.status} ${Date.now() - started}ms`);
   });
   app.route(
@@ -268,6 +330,7 @@ export async function startApp(options: AppOptions) {
       authenticate: signIn.authenticate,
       apiKey: env.HARNESS_API_KEY || undefined,
       corsOrigin: env.CORS_ORIGIN || '*',
+      trustProxy: env.TRUST_PROXY === '1',
       rateLimit: env.RATE_LIMIT_PER_MINUTE ? { windowMs: 60_000, max: Number(env.RATE_LIMIT_PER_MINUTE) } : undefined,
       memory,
     }),

@@ -2,7 +2,8 @@
 
 The HTTP API for a [Lean Harness](https://github.com/ikevinsolomon/lean-harness) agent, so any UI can drive it:
 sessions, replies streamed as Server-Sent Events, approvals, stop and reconnect, memory, search,
-and built-in accounts (email and password, one admin, invite links).
+and built-in accounts: email and password, Google/Microsoft/OIDC, invites, sign-up by email
+domain, password resets by email, an activity log.
 
 ```ts
 import { createHarness, anthropic, openSqlite, SqlSessionStore } from '@lean-harness/core';

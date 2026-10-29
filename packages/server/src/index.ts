@@ -11,7 +11,11 @@ import type { Authenticate, User } from './auth.js';
 export { jwtAuth, tokenAuth } from './auth.js';
 export type { Authenticate, JwtOptions, User } from './auth.js';
 export { AccountError, Accounts } from './accounts.js';
-export type { Account, AccountOptions, Invite, Role } from './accounts.js';
+export type { Account, AccountOptions, ActivityEntry, Invite, Role, SignupPolicy } from './accounts.js';
+export { consoleMailer, linkEmail, resendMailer, smtpMailer } from './mail.js';
+export type { Email, Mailer } from './mail.js';
+export { google, microsoft, oidc } from './sso.js';
+export type { SsoProvider } from './sso.js';
 
 /** How the app presents itself to its UIs: the web app shows these. */
 export interface AppInfo {
@@ -32,10 +36,12 @@ export interface ServerOptions {
    */
   authenticate?: Authenticate;
   /**
-   * Built-in email-and-password accounts: one admin, everyone else joins by invite link.
+   * Built-in accounts: email and password, Google/Microsoft/OIDC, invites, sign-up, resets.
    * Adds `/auth/*` and `/admin/*` routes. Can be combined with `authenticate` (tried second).
    */
   accounts?: Accounts;
+  /** Behind a proxy or load balancer you run: read visitors' IPs from X-Forwarded-For (for sign-in limits and the activity log). */
+  trustProxy?: boolean;
   /** Single-user shortcut: require `Authorization: Bearer <apiKey>`. */
   apiKey?: string;
   /** Origins allowed to call the API from a browser (default "*"). Set your app's origin in production. */
@@ -179,7 +185,7 @@ export function createServer(harness: Harness, options: ServerOptions = {}) {
 
   api.get('/app', (c) => c.json({ name: 'Lean Harness', suggestions: [], ...options.app }));
 
-  if (options.accounts) accountRoutes(api, options.accounts);
+  if (options.accounts) accountRoutes(api, options.accounts, { trustProxy: options.trustProxy });
 
   api.get('/me', (c) => c.json({ user: c.get('user') }));
 

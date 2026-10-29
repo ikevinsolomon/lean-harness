@@ -19,7 +19,41 @@ AUTH=
 # Optional: Postgres instead of the SQLite file in .data/ (also run `npm install pg`).
 DATABASE_URL=
 
-# Optional: the address people use, for links printed by `npm run reset-password`.
+# Optional: the address people use to reach the app (https://chat.example.com). Links in emails,
+# Google/Microsoft sign-in and `reset-password` use it. Default: http://localhost:PORT.
 PUBLIC_URL=
+
+# Optional: send email (invites, "Forgot password?", sign-up and confirmation links).
+# Resend (resend.com), or any SMTP server (also run `npm install nodemailer`), or EMAIL=console
+# to print emails in this terminal while trying things out. EMAIL_FROM must be an address
+# your provider lets you send from, e.g. "Support Desk <help@example.com>".
+RESEND_API_KEY=
+SMTP_URL=
+EMAIL=
+EMAIL_FROM=
+
+# Optional: who may sign up without an invite, until an admin changes it in People.
+# SIGNUP=invite (default), domain (anyone with an email at SIGNUP_DOMAINS), or open.
+# Sign-up needs email or a sign-in provider below, so people prove their address.
+SIGNUP=
+SIGNUP_DOMAINS=
+
+# Optional: "Continue with Google / Microsoft / your provider". Register the redirect URL
+# PUBLIC_URL/v1/auth/sso/<google|microsoft|oidc>/callback with the provider.
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+MICROSOFT_CLIENT_ID=
+MICROSOFT_CLIENT_SECRET=
+# Your directory (tenant) ID to allow only your organization; empty allows any Microsoft account.
+MICROSOFT_TENANT=
+# Any OpenID Connect provider (Okta, Auth0, Keycloak...): its issuer URL, and the button name.
+OIDC_ISSUER=
+OIDC_CLIENT_ID=
+OIDC_CLIENT_SECRET=
+OIDC_NAME=
+
+# Optional: behind a proxy or load balancer you run, set to 1 so sign-in limits and the
+# activity log see visitors' real IP addresses (from X-Forwarded-For).
+TRUST_PROXY=
 
 PORT=8787

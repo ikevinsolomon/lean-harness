@@ -232,15 +232,22 @@ All routes are under `/v1`. With sign-in on (`accounts` or `authenticate`), ever
 | `GET` | `/search?q=` | Find messages in your sessions |
 | `GET`, `DELETE` | `/memories`, `/memories/:id` | What the assistant remembers about you (when `memory` is passed to `createServer`) |
 | `POST` | `/sessions/:id/approvals/:callId` | `{ approved, always? }`: allow or decline a tool call that is waiting |
-| `GET` | `/auth/status` | `{ accounts, setupRequired, user }` (with `accounts`) |
+| `GET` | `/auth/status` | `{ accounts, setupRequired, user, email, signup, providers }` (with `accounts`) |
 | `POST` | `/auth/setup` | `{ name, email, password }`: create the admin account; works once, on a fresh server |
 | `POST` | `/auth/login`, `/auth/logout` | `{ email, password }` → `{ user, token }` plus an httpOnly cookie |
-| `POST` | `/auth/password` | `{ current, next }`: change your password; signs out your other devices |
+| `POST` | `/auth/password` | `{ current?, next }`: change your password (or set one, after Google/Microsoft only); signs out your other devices |
+| `PATCH`, `DELETE` | `/auth/me` | Change your name `{ name }`; delete your account `{ password? }` |
+| `POST` | `/auth/email`, `/auth/verify`, `/auth/email/:token` | Change your email `{ email, password? }`; send the confirmation link again; confirm with the emailed link |
+| `POST` | `/auth/forgot`, `/auth/signup` | `{ email }`: email a reset link, or a sign-up link (answers 202 either way) |
+| `GET` | `/auth/sso/:provider`, `/auth/sso/:provider/callback` | "Continue with Google": the browser goes here (`?invite=`, `?next=`) and comes back signed in |
 | `GET`, `POST` | `/auth/invites/:token`, `/auth/invites/:token/accept` | Look at an invite; accept it with `{ name, email, password }` |
 | `GET`, `POST` | `/auth/resets/:token` | Look at a password reset link; set the new password with `{ password }` |
 | `POST` | `/admin/users/:id/reset` | Admin only: a password reset link → `{ token, expiresAt }` (the link is `/reset/<token>`) |
 | `GET`, `PATCH`, `DELETE` | `/admin/users`, `/admin/users/:id` | Admin only: people; `{ disabled?, role? }` |
-| `GET`, `POST`, `DELETE` | `/admin/invites`, `/admin/invites/:id` | Admin only: open invites; `POST { email?, role? }` → `{ invite, token }` (the link is `/invite/<token>`) |
+| `GET`, `POST`, `DELETE` | `/admin/invites`, `/admin/invites/:id` | Admin only: open invites; `POST { email?, role? }` → `{ invite, token, emailed }` (the link is `/invite/<token>`) |
+| `POST` | `/admin/invites/:id/renew` | Admin only: a new link for an open invite (emailed again when it has an email) |
+| `GET`, `PATCH` | `/admin/settings` | Admin only: who may sign up, `{ signup: { mode, domains } }` |
+| `GET` | `/admin/activity?before=` | Admin only: sign-ins and changes to people, newest first |
 | `POST` | `/sessions/:id/messages` | `{ content, model?, context?, files?, replaceFrom?, stream? }` → event stream, or JSON when `stream: false`. `replaceFrom` is a user message id: it and everything after it are replaced (retry, edit) |
 
 A turn streams as Server-Sent Events, one per event:
@@ -266,12 +273,31 @@ curl -N -X POST localhost:8787/v1/sessions/<id>/messages -H 'content-type: appli
 
 Every session belongs to the person who made it: people see only their own chats, and memory follows the user. Pick how people sign in:
 
-**Built-in accounts** (the quickstart's default). Email and password, one admin, everyone else joins by invite link. The first visitor creates the admin account; the admin creates invite links under **People** (optionally locked to an email), turns accounts off and on, and makes other admins. Passwords are hashed with scrypt, sign-ins use an httpOnly cookie (or the returned token as `Bearer` for other clients), cross-site writes are refused, and repeated wrong passwords are slowed down.
+**Built-in accounts** (the quickstart's default). The first visitor creates the admin account. Everything else is under **People**:
+
+- **Invites.** Add an email and the invite is emailed (or copy the link and send it yourself); leave it empty for a link anyone can use once. Invite someone as an admin, send an invite again, or revoke it.
+- **Who can join.** Invited people only (default), anyone with an email at your domains (`acme.com`), or anyone. New people prove their address by a link to their inbox, or by signing in with Google/Microsoft.
+- **Members.** Last sign-in, search, make admin or member, reset a password, turn an account off, remove it. An admin can step down once there is another admin.
+- **Activity.** Sign-ins (and failed ones), invites, sign-ups, role changes, removals and resets, with the IP address, for a year.
+
+Everyone can change their name, email (confirmed by a link to the new address) and password, and delete their account, in **Settings**.
+
+**Email.** Set `RESEND_API_KEY` or `SMTP_URL` (and `EMAIL_FROM`, `PUBLIC_URL`) to send invites, "Forgot password?" links, sign-up links and email confirmations. `EMAIL=console` prints them in the terminal instead. Without email, everything still works by copying links.
+
+**Google, Microsoft and OpenID Connect.** Set `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET` (and `MICROSOFT_TENANT` to allow only your organization), or `OIDC_ISSUER`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET`/`OIDC_NAME`. Register `PUBLIC_URL/v1/auth/sso/<google|microsoft|oidc>/callback` as the redirect URL. Sign-in links to an existing account by the provider's verified email; a new person needs an invite or open sign-up. Emails a provider doesn't vouch for are never used.
+
+**Security.** Passwords are hashed with scrypt; every token is random and stored only as a hash. Sign-ins use an httpOnly cookie (or the returned token as `Bearer` for other clients) and cross-site writes are refused. Wrong passwords are limited per email and IP (10 per 15 minutes), so guessing is slow but nobody can lock you out from elsewhere; emails are limited per address. These limits live in the database, so they hold across servers. "Forgot password?" and sign-up answer the same whether or not an account exists. Expired sign-ins and links are deleted automatically. Behind your own proxy, set `TRUST_PROXY=1` so limits see real IP addresses.
 
 ```ts
-import { Accounts, createServer } from '@lean-harness/server';
+import { Accounts, createServer, google, resendMailer } from '@lean-harness/server';
 
-createServer(harness, { accounts: new Accounts(db) }); // db: openSqlite(...) or postgresDb(pool)
+const accounts = new Accounts(db, {
+  publicUrl: 'https://chat.example.com',
+  mailer: resendMailer({ apiKey: process.env.RESEND_API_KEY!, from: 'Support <help@example.com>' }),
+  sso: [google({ clientId: '...', clientSecret: '...' })],
+  signup: { mode: 'domain', domains: ['example.com'] },
+});
+createServer(harness, { accounts }); // db: openSqlite(...) or postgresDb(pool)
 ```
 
 **Your own sign-in.** Use `authenticate` with tokens, signed JWTs, or anything else:
@@ -284,7 +310,7 @@ createServer(harness, { authenticate: jwtAuth({ secret: process.env.SUPABASE_JWT
 createServer(harness, { authenticate: async (req) => (await mySession(req)) ?? null }); // any sign-in system
 ```
 
-**Forgotten passwords.** The admin makes a one-time reset link from **People** (row menu → Reset password); it works for 24 hours and signs the person out everywhere else. If the admin is locked out, run `pnpm reset-password` in the app's folder (`pnpm reset-password someone@example.com` for anyone else): it prints a link. Set `PUBLIC_URL` so the link uses your real address.
+**Forgotten passwords.** With email, people use "Forgot password?" on the sign-in page. Without it, the admin makes a one-time reset link from **People** (row menu → Reset password). Reset links work once, for 24 hours, and sign the person out everywhere else. If the admin is locked out, run `pnpm reset-password` in the app's folder (`pnpm reset-password someone@example.com` for anyone else): it prints a link. Set `PUBLIC_URL` so the link uses your real address.
 
 In the quickstart, `HARNESS_USERS=asha:token1,ben:token2` switches to access tokens, and `AUTH=off` turns sign-in off (a single-user app on your own machine). When accounts are switched on for an existing install, chats made before belong to the admin.
 
@@ -377,7 +403,8 @@ pnpm build       # dist/ for every package
 - Tool inputs are validated, but a tool is your code: check permissions inside it, and use `beforeToolCall` for approval gates.
 - Model output is untrusted. The widget renders Markdown through DOMPurify.
 - A token in `<lean-chat token>` is visible to the page's users. For public sites, serve the widget from the same site as the server so it uses the sign-in cookie, use `authenticate` with your own sign-in, or put a backend in front that adds credentials.
-- Invite links work once and expire after 7 days; anyone holding an unused link can join, so send them privately or lock them to an email.
+- Invite links work once and expire after 7 days; anyone holding an unused link can join, so send them privately or lock them to an email. Someone who joins with a link that wasn't emailed to them has an unconfirmed email until they confirm it; if the real owner of that address later signs in with Google or Microsoft, the account's password and sign-ins are cleared and it becomes theirs.
+- Open sign-up lets anyone who finds the app use your models. Prefer email domains, and set `RATE_LIMIT_PER_MINUTE`.
 - `fetch_url` refuses private and local addresses, but DNS can change between the check and the request; run the server where the network itself blocks internal services if that matters to you.
 - Attachments and chats are stored as you send them. Treat the database as sensitive.
 

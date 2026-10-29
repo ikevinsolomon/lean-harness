@@ -16,10 +16,14 @@ First version.
   context, a searchable knowledge base, and automatic summaries of long conversations.
 - **Tools:** MCP servers (local and remote), approvals (allow once, always, deny),
   web fetch with network protections, sub-agents, structured output.
-- **Accounts:** email and password with one admin and invite links (People screen,
-  turn accounts off, make admins), change password, password reset links (from People,
-  or `pnpm reset-password` for a locked-out admin), scrypt hashing, httpOnly cookies,
-  cross-site protection and sign-in throttling. Or bring your own sign-in (tokens, JWT).
+- **Accounts:** email and password; "Continue with Google / Microsoft / OpenID Connect";
+  invites (emailed, resent, as admin); sign-up for your email domains or anyone, proven
+  by an emailed link; "Forgot password?" by email; email confirmation and email change;
+  profile, password and account deletion in Settings; People with last sign-in, search,
+  roles and stepping down; an activity log; email by Resend, SMTP or the console.
+  Sign-in limits per email and IP stored in the database, expired links cleared
+  automatically, scrypt hashing, httpOnly cookies, cross-site protection. Or bring your
+  own sign-in (tokens, JWT).
 - **Claude server tools:** web search and code execution, with paused turns resumed
   automatically.
 - **Production:** one database for chats, memory and accounts (SQLite or Postgres, with

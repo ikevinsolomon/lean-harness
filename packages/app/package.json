@@ -51,10 +51,14 @@
     "@lean-harness/widget": "workspace:*"
   },
   "peerDependencies": {
-    "pg": "^8.0.0"
+    "pg": "^8.0.0",
+    "nodemailer": ">=6.0.0"
   },
   "peerDependenciesMeta": {
     "pg": {
+      "optional": true
+    },
+    "nodemailer": {
       "optional": true
     }
   },
